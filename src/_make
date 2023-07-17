@@ -1,0 +1,12 @@
+src parser.c using
+    clum-lib/file.c
+    clum-lib/strings.c
+    clum-lib/arr.c
+    clum-lib/node.c
+    clum-lib/list.c
+    clum-lib/sha1.c
+    clum-lib/dict.c
+    clum-lib/pipe.c
+    clum-lib/util.c
+
+    token.c
