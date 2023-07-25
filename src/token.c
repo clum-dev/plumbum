@@ -18,10 +18,6 @@ String* tok_get_id_str(TokenID id) {
         case T_EOF:
             return str_init("T_EOF");
 
-        case T_STR_LIT_BEGIN:
-            return str_init("T_STR_LIT_BEGIN");
-        case T_STR_LIT_END:
-            return str_init("T_STR_LIT_END");
         case T_STR_REF_BEGIN:
             return str_init("T_STR_REF_BEGIN");
         case T_STR_REF_END:
@@ -200,14 +196,10 @@ String* tok_get_raw_str(TokenID id) {
         case T_EOF:
             return str_init("[EOF]");
 
-        case T_STR_LIT_BEGIN:
-            return str_init("[\"");
-        case T_STR_LIT_END:
-            return str_init("\"]");
         case T_STR_REF_BEGIN:
-            return str_init("REF:[\"");
+            return str_init("REF:['");
         case T_STR_REF_END:
-            return str_init("\"]");
+            return str_init("']");
 
         case T_STR_LIT:
             return str_init("STR:`");
@@ -453,11 +445,16 @@ void tokset_print(TokenSet* tokset, bool spaceSep) {
 }
 
 //
-void tokset_print_ids(TokenSet* tokset) {
+void tokset_print_ids(TokenSet* tokset, bool showSpace) {
     for (size_t i = 0; i < tokset->size; i++) {
+        if (!showSpace && tokset->toks[i]->id == T_SPACE) {
+            continue;
+        }
         printf("%s ", tokset->toks[i]->idStr->text);
         if (tokset->toks[i]->id == T_LINEBREAK) {
             printf("\n");
+        } else if (tokset->toks[i]->id == T_ID) {
+            printf("[%s] ", tokset->toks[i]->raw->text);
         }
     }
 

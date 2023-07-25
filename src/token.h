@@ -14,8 +14,6 @@ typedef enum TokenID {
     T_LINEBREAK,    // line break (debug)
     T_EOF,          // end of file (debug)
 
-    T_STR_LIT_BEGIN,    // ["
-    T_STR_LIT_END,      // "]
     T_STR_REF_BEGIN,    // [$
     T_STR_REF_END,      // $]
 
@@ -141,7 +139,7 @@ Token* tok_clone(Token* tok);
 
 TokenSet* tokset_init();
 void tokset_print(TokenSet* tokset, bool spaceSep);
-void tokset_print_ids(TokenSet* tokset);
+void tokset_print_ids(TokenSet* tokset, bool showSpace);
 void tokset_free(TokenSet* tokset);
 void tokset_add(TokenSet* tokset, Token* tok);
 void tokset_add_from_id(TokenSet* tokset, TokenID id, size_t line, size_t col);

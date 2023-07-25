@@ -4,12 +4,13 @@ struct Person {
 }
 
 func Person::new |: name:string, data:int -> Person {
-    name | @name & data | @data
+    name, data |: @name, @data
     "init person" | println
 }
 
 func Person::debug {
-    @name, @data |> "debug:\t{$0} = {$1}" | println
+    @name, @data |> "debug:\t{$0} = {$1}" | \
+    println
 }
 
 func main {
