@@ -2,12 +2,12 @@ CFLAGS=-Wall -Werror -pedantic -std=gnu99 -g
 .PHONY=all clean
 .DEFAULT_GOAL:=all
 
-OBJS_parser=parser.c clum-lib/file.o clum-lib/strings.o clum-lib/arr.o clum-lib/node.o clum-lib/list.o clum-lib/sha1.o clum-lib/dict.o clum-lib/pipe.o clum-lib/util.o token.o
+OBJS_lexer=lexer.c clum-lib/file.o clum-lib/strings.o clum-lib/arr.o clum-lib/node.o clum-lib/list.o clum-lib/sha1.o clum-lib/dict.o clum-lib/pipe.o clum-lib/util.o token.o syntax.o
 
-all: parser
+all: lexer
 
-parser: $(OBJS_parser)
-	gcc $(CFLAGS) $(OBJS_parser) -o parser
+lexer: $(OBJS_lexer)
+	gcc $(CFLAGS) $(OBJS_lexer) -o lexer
 
 clum-lib/file.o: clum-lib/file.c clum-lib/file.h
 	gcc $(CFLAGS) -o clum-lib/file.o -c clum-lib/file.c
@@ -39,9 +39,12 @@ clum-lib/util.o: clum-lib/util.c clum-lib/util.h
 token.o: token.c token.h
 	gcc $(CFLAGS) -o token.o -c token.c
 
+syntax.o: syntax.c syntax.h
+	gcc $(CFLAGS) -o syntax.o -c syntax.c
+
 
 clean:
-	rm -f parser
+	rm -f lexer
 	rm -f clum-lib/file.o
 	rm -f clum-lib/strings.o
 	rm -f clum-lib/arr.o
@@ -52,3 +55,4 @@ clean:
 	rm -f clum-lib/pipe.o
 	rm -f clum-lib/util.o
 	rm -f token.o
+	rm -f syntax.o

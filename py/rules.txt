@@ -1,0 +1,34 @@
+toplvl: (func | struct | enum | const | use)*
+
+func: 'func' ID [pipe paramList] ['->' type] stmtBlock
+struct: 'struct' ID '{' [typedID stmtSep]* '}'
+enum: 'enum' ID '{' [ID stmtSep]* '}'
+const: 'const' '{' [literal pipe typedID stmtSep]* '}'
+use: 'use' '{' [ID | ID pipe ID stmtSep]* '}'
+
+paramList: ( '(' paramList ')' ) | ( param [',' param]* )
+
+param: ID | typedID
+typedID: ID ':' type
+type: primType | advType | ID
+primType: 'any' | 'int' | 'float' | 'bool' | 'null'
+advType: 'String' | 'List' | 'Dict'
+
+stmtSep: '\n' stmtSep | ';' stmtSep | ''
+
+stmtBlock: '{' [pipeline stmtSep]* '}'
+
+pipeline: (mathExpr | logicExpr | dataExpr) [pipe pipeline]
+pipe: basicPipe | advPipe
+basicPipe   : '|' 
+            | '|>' 
+            | '|<'
+            | '|:'
+            | '|='
+            | '|+'
+
+advPipe     : '|@'
+            | '|?'
+            | '|_'
+            | '|%'
+

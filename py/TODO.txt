@@ -1,0 +1,16 @@
+https://www.scaler.com/topics/operator-precedence-in-python/
+
+
+
+https://stackoverflow.com/questions/28256/equation-expression-parser-with-precedence
+
+https://stackoverflow.com/questions/8507694/pyparsing-example
+
+https://en.wikipedia.org/wiki/Recursive_descent_parser
+
+https://www.gnu.org/software/bison/manual/html_node/Infix-Calc.html
+
+https://www.engr.mun.ca/~theo/Misc/exp_parsing.htm#bib  !! REVIEW !!
+
+https://github.com/matthieucham/calculator/blob/master/calc.py#L200
+

@@ -1,4 +1,4 @@
-src parser.c using
+src lexer.c using
     clum-lib/file.c
     clum-lib/strings.c
     clum-lib/arr.c
@@ -10,3 +10,4 @@ src parser.c using
     clum-lib/util.c
 
     token.c
+    syntax.c

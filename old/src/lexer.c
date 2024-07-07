@@ -13,7 +13,8 @@
 
 #include "clum-lib/clum-lib.h"
 #include "token.h"
-#include "parser.h"
+#include "lexer.h"
+#include "syntax.h"
 
 
 void debug_sep() {
@@ -49,7 +50,8 @@ bool is_disallowed_token(TokenID id) {
     return false;
 }
 
-//
+// Add string reference to tokenset
+// e.g. "this is a {reference}"
 void add_str_ref(Dict* lookup, TokenSet* tokens, TokenSet* refined, size_t* i) {
 
     tokset_add_from_id(refined, T_STR_REF_BEGIN, 0, 0);
@@ -72,7 +74,7 @@ void add_str_ref(Dict* lookup, TokenSet* tokens, TokenSet* refined, size_t* i) {
     tokset_add_from_id(refined, T_STR_REF_END, 0, 0);
 }
 
-//
+// Add "string literal" to tokenset
 void add_str_lit(TokenSet* refined, String* buff) {
     
     String* temp = str_init("");
@@ -107,7 +109,7 @@ void add_str_lit(TokenSet* refined, String* buff) {
     str_free(temp);
 }
 
-//
+// Builds a string and adds to tokenset
 void build_string(Dict* lookup, TokenSet* tokens, TokenSet* refined, size_t* i) {
 
     String* buff = str_init("");
@@ -133,12 +135,12 @@ void build_string(Dict* lookup, TokenSet* tokens, TokenSet* refined, size_t* i) 
     str_free(buff);
 }
 
-//
+// Checks if a token is a number
 bool is_number(Token* tok) {
     return tok->raw->len > 0 && isdigit(tok->raw->text[0]);
 }
 
-//
+// Checks if a string is a valid int (e.g. all digits)
 bool is_valid_int(String* str) {
     size_t count = 0;
     for (size_t i = 0; i < str->len; i++) {
@@ -149,7 +151,8 @@ bool is_valid_int(String* str) {
     return count == str->len;
 }
 
-//
+// Adds a number literal to tokenset
+// (float or int)
 void add_num_lit(TokenSet* tokens, TokenSet* refined, size_t* i) {
 
     size_t isFloat = 0;
@@ -189,7 +192,7 @@ void add_num_lit(TokenSet* tokens, TokenSet* refined, size_t* i) {
     str_free(result);
 }
 
-//
+// Add token as number or identifier
 void add_unknown(TokenSet* tokens, TokenSet* refined, size_t* i) {
     // Handle numbers
     if (is_number(tokens->toks[*i])) {
@@ -201,7 +204,7 @@ void add_unknown(TokenSet* tokens, TokenSet* refined, size_t* i) {
     }
 }
 
-//
+// Parse input file
 void parse_file(File* f, Dict* lookup, TokenSet* tokens) {
 
     printf("Begin matching\n\n");
@@ -282,12 +285,12 @@ void parse_file(File* f, Dict* lookup, TokenSet* tokens) {
     tokset_add_from_id(tokens, T_EOF, 0, 0);
 }
 
-//
+// Check if token is a top level keyword
 bool is_top_level(TokenID id) {
     return id == T_FUNC_KW || id == T_STRUCT_KW || id == T_ENUM_KW || id == T_CONST_KW || id == T_USING_KW;
 }
 
-//
+// Tracks the number of top level keywords found
 void track_top_level(ProgData* data, Token* tok) {
     // if (is_top_level(tok->id)) {
     //     data->topLvlCount++;
@@ -315,20 +318,23 @@ void track_top_level(ProgData* data, Token* tok) {
     }
 }
 
-//
+// Refines the tokenset (removes extraneous tokens)
 TokenSet* refine_tokens(Dict* lookup, TokenSet* tokens, ProgData* data) {
 
     TokenSet* refined = tokset_init();
 
     for (size_t i = 0; i < tokens->size; i++) {
+        // Track top level keywords for later use
         track_top_level(data, tokens->toks[i]);
         
+        // Skip comments
         if (tokens->toks[i]->id == T_HASH) {
             while (tokens->toks[i]->id != T_LINEBREAK) {
                 i++;
             }
         }
 
+        // Remove spaces
         if (tokens->toks[i]->id != T_SPACE) {  
             if (tokens->toks[i]->id == T_QUOTE) {
                 build_string(lookup, tokens, refined, &i);
@@ -345,7 +351,7 @@ TokenSet* refine_tokens(Dict* lookup, TokenSet* tokens, ProgData* data) {
 }
 
 
-//
+// Initialise program data struct
 ProgData* progdata_init() {
     ProgData* data = (ProgData*)malloc(sizeof(ProgData));
 
@@ -366,7 +372,7 @@ ProgData* progdata_init() {
     return data;
 }
 
-//
+// Free program data struct
 void progdata_free(ProgData* data) {
     if (data != NULL) {
         if (data->counts != NULL) {
@@ -388,7 +394,7 @@ void progdata_free(ProgData* data) {
     data = NULL;
 }
 
-//
+// Initialise lookup dicts for all top level keywords
 void track_ids(TokenSet* refined, ProgData* data) {
     data->lookups->funcs = dict_init(data->counts->funcCount, true);
     data->lookups->structs = dict_init(data->counts->structCount, true);
@@ -448,9 +454,6 @@ int main() {
     tokset_print_ids(refined, true);
     debug_sep();
     
-    // Track identifiers
-    // TODO
-    
     // Debug
     printf("Prog data:\n");
     printf("funcs: %ld\n", data->counts->funcCount);
@@ -459,10 +462,17 @@ int main() {
     printf("consts: %ld\n", data->counts->constCount);
     printf("usings: %ld\n", data->counts->usingCount);
 
+    // Track identifiers
     track_ids(refined, data);
-
-    // Free memory
     
+    // Static checking
+    debug_sep();
+    printf("Static checking:\n");
+    begin_static_check(refined);
+    
+    
+    // Free memory
+    debug_sep();
     
     progdata_free(data);
 

@@ -1,0 +1,195 @@
+
+
+# Parameters
+params:
+    | params ',' default_param
+    | default_param
+
+default_param:
+    | typed_param '=' atom
+    | typed_param
+
+typed_param:
+    | id ':' comp_type
+    | id
+
+comp_type:
+    | ('List' | 'Dict') '<' (comp_type | prim_type) '>'
+    | prim_type
+
+prim_type:
+    | 'int' => t_int
+    | 'float' => t_float
+    | 'String' => t_string
+    | 'null' => t_null
+    | id => t_custom
+
+
+# Lambda
+lambda_expr:
+    | captures '->' primary
+    | captures '->' block
+
+
+# Loops
+while_stmt:
+    | 'while' log_expr ':' pipeline block
+    | 'while' log_expr block
+
+for_stmt:
+    | 'for' primary '->' captures block
+    | 'for' primary block
+
+captures:
+    | captures ',' id
+    | id
+
+
+# Conditionals
+if_stmt:
+    | 'if' log_expr block elif_stmt
+    | 'if' log_expr block [else_stmt]
+
+elif_stmt:
+    | 'else if' log_expr block elif_stmt
+    | 'else if' log_expr block [else_stmt]
+
+else_stmt:
+    | 'else' block
+
+
+# Logic exprs
+log_expr:
+    | ternary
+
+ternary:
+    | or '?' or ':' ternary
+    | or
+
+or:
+    | 'or' and
+    | and
+
+and:
+    | 'and' not
+    | not
+
+not:
+    | 'not' comp
+    | comp
+
+comp:
+    | comp '==' bit_not => eq
+    | comp '!=' bit_not => neq
+    | comp '<' bit_not => lt
+    | comp '>' bit_not => gt
+    | comp '<=' bit_not => lte
+    | comp '>=' bit_not => gte
+    | bit_not
+
+bit_not:
+    | bit_not '*~' bit_or
+    | bit_or
+
+bit_or:
+    | bit_or '*|' bit_xor
+    | bit_xor
+
+bit_xor:
+    | bit_xor '*^' bit_and
+    | bit_and
+
+bit_and:
+    | bit_and '*&' shift
+    | shift
+
+shift:
+    | shift '<<' sum => lsh
+    | shift '>>' sum => rsh
+    | sum
+
+
+# Math exprs
+sum:
+    | sum '+' term => add
+    | sum '-' term => sub
+    | term
+
+term:
+    | term '*' factor => mult
+    | term '/' factor => div
+    | term '%' factor => mod
+    | factor
+
+factor:
+    | '+' factor => posate
+    | '-' factor => negate
+    | power
+
+power:
+    | crement ['**' factor]
+
+crement:
+    | primary '++' => inc
+    | primary '--' => dec
+    | primary
+
+primary:
+    | primary '.' id => member
+    | primary '(' [pipeline] | [block]')' => call
+    | primary '[' range | sum ']' => index
+    | atom
+
+atom:
+    | id
+    | literal
+    | range
+    | list
+
+list:
+    | '[' pipeline ']'
+
+range:
+    | sum '..' sum
+
+
+# Literals
+literal:
+    | string
+    | float
+    | int
+
+string:
+    | '"' {strbase | block | escchar} '"'
+    
+strbase:
+    | {char - ( '"' | '{' | '}' )}
+
+escchar:
+    | '\' ( '\' 
+          | 'b' 
+          | 't' 
+          | 'f' 
+          | 'b' 
+          | 'n'
+          | '"' )
+
+float:
+    | int '.' int
+
+int:
+    | digit {digit}
+
+
+# Bases
+id:
+    | letter {letter | digit}
+
+letter:
+    | 'a'..'z' | 'A'..'Z' | '_'
+
+digit:
+    | '0'..'9'
+    
+char:
+    | ?all chars?

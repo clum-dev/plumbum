@@ -1,4 +1,2 @@
 .vscode
-py
-src/parser ideas.txt
-src/syntax.*
+old/zig

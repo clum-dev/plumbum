@@ -1,0 +1,158 @@
+## Function syntax:
+
+    func simple {
+        ...
+    }
+
+    func retType -> int {
+        ...
+    }
+
+    func param |: x {
+        ...
+    }
+
+    func paramRet |: x -> int {
+        x |= int | return
+    }
+
+    func paramTypeRet |: x:int -> int {
+        x | print | return
+    }
+
+    func defaultValue |: 123|x:int -> int {
+        x | print | return  # 123
+    }
+
+
+## String functions
+
+    "Test Str" | test
+
+    test.size           # 8
+    test[0]             # T
+
+    test + "ing"        # "Test String"
+    test - "t"          # "Tes Sr"
+
+    "t", 1 |> test.reap # "Tes Str"
+    "t", 2 |> test.reap # "Tes Sr"
+
+    test.reverse        # "rtS tseT"
+
+    2 | test.trim       # "Test S"
+
+    test++              # "est Str"
+    test--              # "Test St"
+
+    test.upper          # "TEST STR"
+    test.lower          # "test str"
+
+    1,5 |> test.slice       # "est S"
+    -2,-1 |> test.slice     # "tr"
+
+    test.split(" ")     # "Test", "Str"
+    "Test", "Str" |> $_ |. join(" ")        # "Test Str"
+    "Test", " ", "Str" |+ println           # "Test Str"
+
+
+## Pipe syntax:
+
+    # Basic
+    1 | x           # Pipe
+    1,2 |: x,y      # Pair
+    1 |< x,y        # Distribute
+    1,2 |> x        # Funnel
+
+    # Cast
+    123 |= string | println     # "123"
+
+    # Sum
+    1,2,3 |+ println            # 6
+    "a","b","c" |+ | println    # "abc"
+
+    # Remove
+    1,2,3 |- 1 | println            # 2,3
+    "a","b","c" |- "b" | println    # "a","c"
+
+    # Filter
+    1,2,3 |? i -> i % 2 == 0 |> println     # 2
+
+    # Map
+    1,2,3 |@ i -> i + 1 |> println  # 2,3,4
+    1,2,3 |@ i -> {
+        if i == 2 {
+            22 | return
+        }
+    }   # 1,22,3
+
+    # Method access
+    123 |= string |. splay(",").contains(",2")
+    
+
+## Data structures
+    # TODO
+
+
+# Structs / Enums
+    # TODO
+
+    
+## Testing
+    struct Tracker {
+        entries: List<int>
+        max: int
+    }
+
+    func Tracker::new |> vals:List<int> {
+        vals, -1 |: @entries, @max
+    }
+
+    func Tracker::setGetMax |> vals:List<int> -> int {
+        # Sort vals, store, set max (last sorted) and return max
+        vals.sort | @entries | $0[-1] | @max | return
+    }
+
+    func Tracker::sumOfOdds -> int {
+        @entries |? i -> i % 2 |> odds |+ return
+    }
+
+## Extend existing class
+
+# Dict of character frequency in string
+func string::freq -> Dict<chr,int> {
+    @len | Dict.new | d
+    for c in @self.split("") {
+        if d.get(c) != nil {
+            d.get(c)++
+        } else {
+            d.add(c)
+        }
+    }
+    d | return
+}
+
+func int::isOdd -> bool {
+    @self % 2 != 0 | return
+}
+
+
+func main {
+    "hello".freq | freq | printnln  # {h: 1, e:1, l:2, o:1}
+    
+    69.isOdd | println # True
+    42.isOdd | println # False
+    
+}
+
+
+# https://www.youtube.com/watch?v=mRT-yK2RTdg
+
+func maxPrefixScore |: nums:List<int> -> int {
+    # |%    ->  scan operator: i is current element, j is previous element
+    
+    nums.sort.reverse       \   # reverse sort nums
+        |% i,j -> {i+j}     \   # plus scan
+        |? i -> {i > 0}     \   # filter i>0
+        |.len | return          # return length of filtered
+}

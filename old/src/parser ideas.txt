@@ -1,0 +1,7 @@
+https://en.wikipedia.org/wiki/Comparison_of_parser_generators
+
+https://www.lua.org/doc/jucs05.pdf
+https://ach.srht.site/minipeg
+https://carburetta.com/
+https://www.h8dems.com/
+

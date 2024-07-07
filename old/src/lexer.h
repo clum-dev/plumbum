@@ -1,5 +1,5 @@
-#ifndef __PARSER_H__
-#define __PARSER_H__
+#ifndef __LEXER_H__
+#define __LEXER_H__
 
 #include "clum-lib/clum-lib.h"
 
@@ -26,8 +26,6 @@ typedef struct ProgData {
     TopLvlLookups* lookups;
 
 } ProgData;
-
-
 
 
 
