@@ -1,2 +1,3 @@
 .vscode
 old/zig
+__pycache__

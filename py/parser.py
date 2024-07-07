@@ -173,10 +173,30 @@ class TokType(Enum):
 
     BLOCK =         ['BLOCK', None]
 
+    LOG_TERN =      ['LOG_TERN', '?']
+    LOG_OR =        ['LOG_OR', 'or']
+    LOG_AND =       ['LOG_AND', 'and']
+    LOG_NOT =       ['LOG_NOT', 'not']
+
+    COMP_EQ =       ['COMP_EQ', '==']
+    COMP_NEQ =      ['COMP_NEQ', '!=']
+    COMP_LT =       ['COMP_LT', '<']
+    COMP_GT =       ['COMP_GT', '>']
+    COMP_LTE =      ['COMP_LTE', '<=']
+    COMP_GTE =      ['COMP_GTE', '>=']
+
+    BIT_NOT =       ['BIT_NOT', '*~']
+    BIT_OR =        ['BIT_OR', '*|']
+    BIT_XOR =       ['BIT_XOR', '*^']
+    BIT_AND =       ['BIT_AND', '*&']
+    BIT_SHR =       ['BIT_SHR', '>>']
+    BIT_SHL =       ['BIT_SHL', '<<']
+
+    RANGE =         ['RANGE', '..']
+
     SUM =           ['SUM', None]
     ADD =           ['ADD', '+']
     SUB =           ['SUB', '-']
-
 
     TERM =          ['TERM', None]
     MULT =          ['MULT', '*']
@@ -194,13 +214,13 @@ class TokType(Enum):
     DECREMENT =     ['DECREMENT', '--']
 
     PRIMARY =       ['PRIMARY', None]
+    SELFMEMBER =    ['SELFMEMBER', None]
     MEMBER =        ['MEMBER', None]
     INDEX =         ['INDEX', None]
     CALL =          ['CALL', None]
 
     ARGS =          ['ARGS', None]
     ATOM =          ['ATOM', None]
-    RANGE =         ['RANGE', '..']
     ID =            ['ID', None]
 
     LIT_INT =       ['LIT_INT', None]
@@ -269,7 +289,7 @@ class Lexer:
 
 
     def begin(self):
-        self.data_range()
+        return self.sum()
 
     @_trace
     def block(self):
@@ -288,11 +308,34 @@ class Lexer:
                 val.append(self.block())
                 
             else:
-                val.append(self.crement())
+                val.append(self.begin())
 
         self.s.match('}')
 
         return Tok(TokType.BLOCK, val, line, col)
+
+    @_trace
+    def b_and(self):
+        pos = self.s.pos()
+        left = self.b_shift()
+
+        while self.s.is_match('*&'):
+            self.s.match('*&')
+            # TODO
+
+    @_trace
+    def b_shift(self):
+        pos = self.s.pos()
+        left = self.data_range()
+        
+        if self.s.is_match('<<'):
+            self.s.match('<<')
+            return Tok(TokType.BIT_SHL, left, *pos)
+        elif self.s.is_match('>>'):
+            self.s.match('>>')
+            return Tok(TokType.BIT_SHR, left, *pos)
+        
+        return left
 
     @_trace
     def data_range(self):
@@ -400,6 +443,14 @@ class Lexer:
         val = []
         pPos= self.s.pos()
 
+        if self.s.is_match('@'):
+            self.s.match('@')
+            sPos = self.s.pos()
+            selfMember = self.primary()
+            val.append(Tok(TokType.SELFMEMBER, [selfMember], *sPos))
+
+            return Tok(TokType.PRIMARY, val, *pPos)
+
         val.append(self.atom())
 
         if self.s.is_match('('):
@@ -409,7 +460,7 @@ class Lexer:
             self.s.match(')')
             val.append(Tok(TokType.CALL, [val.pop(), args], *cPos))
 
-        while self.s.is_match(['.', '[']):
+        while not self.s.is_match('..') and self.s.is_match(['.', '[']):
             if self.s.is_match('.'):
                 mPos = self.s.pos()
                 self.s.match('.')
@@ -422,7 +473,6 @@ class Lexer:
                 args = self.args()
                 self.s.match(']')
                 val.append(Tok(TokType.INDEX, [val.pop(), args], *cPos))
-
 
         return Tok(TokType.PRIMARY, val, *pPos)
 
@@ -522,6 +572,9 @@ class Lexer:
         val = ''
         line, col = self.s.pos()
         left = self.lit_int()
+
+        if self.s.is_match('..'):
+            return left
 
         # Float
         if self.s.is_match('.'):

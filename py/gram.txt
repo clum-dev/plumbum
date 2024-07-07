@@ -135,6 +135,7 @@ crement:
     | primary
 
 primary:
+    | '@' primary => self_member
     | primary '.' id => member
     | primary '(' [pipeline] | [block]')' => call
     | primary '[' range | sum ']' => index
