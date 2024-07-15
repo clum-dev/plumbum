@@ -15,8 +15,7 @@ indent = 0
 '''
 TEST STRINGS:
 
-a()[].b()--**+2++
-
+a()[].b()--**+2++..c().d()
 
 '''
 
@@ -81,6 +80,7 @@ class TextStream:
         return self.look(1)
 
     def is_match(self, cmatch:List[str]|str) -> bool|None:
+        
         c = self.curr()
         if c is None:
             self.gotMatch = None
@@ -121,6 +121,9 @@ class TextStream:
         
         for _ in self.gotMatch:
             out = self.consume()
+
+        self.skip(' ')  # TODO get this to skip spaces properly
+
         return out
 
     def goto(self, cmatch:List[str]|str) -> str|None:
@@ -149,10 +152,7 @@ class TextStream:
                     break
             elif isinstance(cmatch, str):
                 if c != cmatch:
-                    break
-            else:
-                return None
-            
+                    break    
             c = self.consume()
         
         return c
@@ -168,6 +168,7 @@ class TextStream:
 
 
 class TokType(Enum):
+    PROGRAM =       ['PROGRAM', None]
     EOF =           ['EOF', None]
     LINEBREAK =     ['LINEBREAK', '\n']
 
@@ -237,36 +238,54 @@ class TokType(Enum):
 
 class Tok:
     t:TokType
-    values:list
 
     line:int    
     col:int
 
-    def __init__(self, t:TokType, value:list, line:int, col:int) -> None:
-        self.t, self.values, self.line, self.col = t, value, line, col
+    def __init__(self, t:TokType, line:int, col:int) -> None:
+        self.t, self.line, self.col = t, line, col
 
-    def tree(self, indent:int=0):
-        shift = '  ' * indent
-        print(f'{shift}{self.t:20}\t({self.line}:{self.col})\t')
+    def __str__(self) -> str:
+        return f'{self.t:20}\t({self.line}:{self.col})'
 
-        for t in self.values:
-            if isinstance(t, Tok):
-                t.tree(indent+1)
+    def printer(self, indent:int=0) -> None:
+        shift = ' ' * indent
+        print(f'{shift}{str(self)}')
+
+
+class Tree:
+    tok: Tok
+    leaves: list[any]
+
+    def __init__(self, tok:Tok, leaves:List=None) -> None:
+        self.tok = tok
+        if leaves == None:
+            self.leaves = []
+        else:
+            self.leaves = leaves
+    
+    def add(self, leaves) -> None:
+        self.leaves.append(leaves)
+
+    def printer(self, indent:int=0) -> None:
+        shift = ' ' * indent
+        print(f'{shift}{str(self.tok)}')
+
+        for leaf in self.leaves:
+            if isinstance(leaf, (Tree, Tok)):
+                leaf.printer(indent + 1)
             else:
-                shift = '  ' * (indent+1)
-                print(f'{shift}{repr(t)}')
+                shift = ' ' * (indent + 1)
+                print(f'{shift}{leaf}')
 
-    def simple(self, indent:int=0):
-        for t in self.values:
-            if isinstance(t, Tok):
-                t.simple(indent+1)
-            else:
-                shift = '  ' * (indent+1)
-                print(f'{shift}{repr(t)}')
+        
+    def __str__(self) -> str:
+        return '{' + f'{self.tok}: {str(self.leaves)}' + '}'
+
 
 class Lexer:
 
-    toks:list[Tok]
+    tree:Tree
     s:TextStream
 
     def _trace(func:callable):
@@ -282,15 +301,14 @@ class Lexer:
     
     def __init__(self, filename) -> None:
         self.s = TextStream(filename)
-        self.toks = []
+        self.tree = Tree(Tok(TokType.PROGRAM, 0, 0))
 
         while not self.s.at_end():
-            self.toks.append(self.begin())
-
+            self.tree.add(self.begin())
 
     def begin(self):
-        return self.sum()
-
+        return self.comp()
+    
     @_trace
     def block(self):
         val = []
@@ -308,191 +326,266 @@ class Lexer:
                 val.append(self.block())
                 
             else:
-                val.append(self.begin())
+                val.append(self.sum())
 
         self.s.match('}')
 
         return Tok(TokType.BLOCK, val, line, col)
 
     @_trace
+    def log_not(self):
+        
+        left = None
+        while self.s.is_match('not'):
+            self.s.match('not')
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.LOG_NOT, *pos), [self.log_not()])
+        
+        if left is None:
+            left = self.comp()
+
+        return left
+
+    @_trace
+    def comp(self):
+        
+        left = self.b_not()
+
+        while self.s.is_match(['==', '!=', '<', '>', '<=', '>=']):
+            if self.s.is_match('=='):
+                self.s.match('==')
+                left = Tree(Tok(TokType.COMP_EQ, *self.s.pos()), [left, self.b_not()])
+
+            elif self.s.is_match('!='):
+                self.s.match('!=')
+                left = Tree(Tok(TokType.COMP_NEQ, *self.s.pos()), [left, self.b_not()])
+
+            elif self.s.is_match('<'):
+                self.s.match('<')
+                left = Tree(Tok(TokType.COMP_LT, *self.s.pos()), [left, self.b_not()])
+
+            elif self.s.is_match('>'):
+                self.s.match('>')
+                left = Tree(Tok(TokType.COMP_GT, *self.s.pos()), [left, self.b_not()])
+
+            elif self.s.is_match('<='):
+                self.s.match('<=')
+                left = Tree(Tok(TokType.COMP_LTE, *self.s.pos()), [left, self.b_not()])
+
+            elif self.s.is_match('>='):
+                self.s.match('>=')
+                left = Tree(Tok(TokType.COMP_GTE, *self.s.pos()), [left, self.b_not()])
+            
+        return left
+
+    @_trace
+    def b_not(self):
+        
+        left = None
+        while self.s.is_match('*~'):
+            self.s.match('*~')
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_NOT, *pos), [self.b_not()])
+        
+        if left is None:
+            left = self.b_or()
+
+        return left
+
+    @_trace
+    def b_or(self):
+        left = self.b_xor()
+
+        while self.s.is_match('*|'):
+            self.s.match('*|')
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_OR, *pos), [left, self.b_xor()])
+        
+        return left
+
+    @_trace
+    def b_xor(self):
+        left = self.b_and()
+
+        while self.s.is_match('*^'):
+            self.s.match('*^')
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_XOR, *pos), [left, self.b_and()])
+        
+        return left
+
+    @_trace
     def b_and(self):
-        pos = self.s.pos()
         left = self.b_shift()
 
         while self.s.is_match('*&'):
             self.s.match('*&')
-            # TODO
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_AND, *pos), [left, self.b_shift()])
+
+        return left
 
     @_trace
     def b_shift(self):
-        pos = self.s.pos()
-        left = self.data_range()
         
+        left = self.data_range()
         if self.s.is_match('<<'):
             self.s.match('<<')
-            return Tok(TokType.BIT_SHL, left, *pos)
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_SHL, *pos), [left, self.b_shift()])
+    
         elif self.s.is_match('>>'):
             self.s.match('>>')
-            return Tok(TokType.BIT_SHR, left, *pos)
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.BIT_SHR, *pos), [left, self.b_shift()])
         
         return left
 
     @_trace
     def data_range(self):
-        val = []
-        pos = self.s.pos()
-        val.append(self.sum())
+        left = self.sum()
         if self.s.is_match('..'):
             self.s.match('..')
-            val.append(self.sum())
+            pos = self.s.pos()
+            left = Tree(Tok(TokType.RANGE, *pos), [left, self.sum()])
 
-        return Tok(TokType.RANGE, val, *pos)
+        return left
 
     @_trace
     def sum(self):
-        val = []
-        sPos = self.s.pos()
 
-        val.append(self.term())
+        pos = self.s.pos()
+        left = self.term()
 
-        if self.s.is_match('+'):
-            self.s.match('+')
-            pos = self.s.pos()
-            val.append(Tok(TokType.ADD, [self.term()], *pos))
+        while self.s.is_match(['+', '-']):
+            if self.s.is_match('+'):
+                self.s.match('+')
+                pos = self.s.pos()
+                left = Tree(Tok(TokType.ADD, *pos), [left, self.term()])
 
-        elif self.s.is_match('-'):
-            self.s.match('-')
-            pos = self.s.pos()
-            val.append(Tok(TokType.SUB, [self.term()], *pos))
+            elif self.s.is_match('-'):
+                self.s.match('-')
+                pos = self.s.pos()
+                left = Tree(Tok(TokType.SUB, *pos), [left, self.term()])
 
-        return Tok(TokType.SUM, val, *sPos)
+        return left
 
     @_trace
     def term(self):
-        val = []
-        tPos = self.s.pos()
 
-        val.append(self.factor())
+        left = self.factor()
 
-        if self.s.is_match('*'):
-            self.s.match('*')
-            pos = self.s.pos()
-            val.append(Tok(TokType.MULT, [self.factor()], *pos))
-        
-        elif self.s.is_match('/'):
-            self.s.match('/')
-            pos = self.s.pos()
-            val.append(Tok(TokType.DIV, [self.factor()], *pos))
-        
-        elif self.s.is_match('%'):
-            self.s.match('%')
-            pos = self.s.pos()
-            val.append(Tok(TokType.MOD, [self.factor()], *pos))
-               
-        return Tok(TokType.TERM, val, *tPos)
+        while not self.s.is_match(['*&', '*^', '*|', '*~']) and self.s.is_match(['*', '/', '%']):
+            if self.s.is_match('*'):
+                self.s.match('*')
+                pos = self.s.pos()
+                left = Tree(Tok(TokType.MULT, *pos), [left, self.factor()])
+            
+            elif self.s.is_match('/'):
+                self.s.match('/')
+                pos = self.s.pos()
+                left = Tree(Tok(TokType.DIV, *pos), [left, self.factor()])
+            
+            elif self.s.is_match('%'):
+                self.s.match('%')
+                pos = self.s.pos()
+                left = Tree(Tok(TokType.MOD, *pos), [left, self.factor()])
+                
+        return left
 
     @_trace
     def factor(self):
-        val = []
-        fPos = self.s.pos()
+
+        left = None
 
         if self.s.is_match('+'):
             self.s.match('+')
             pos = self.s.pos()
-            val.append(Tok(TokType.POSATE, [self.power()], *pos))
+            left = Tree(Tok(TokType.POSATE, *pos), [self.power()])
 
         elif self.s.is_match('-'):
             self.s.match('-')
             pos = self.s.pos()
-            val.append(Tok(TokType.NEGATE, [self.power()], *pos))
+            left = Tree(Tok(TokType.NEGATE, *pos), [self.power()])
         
         else:
-            val.append(self.power())
+            left = self.power()
             
-        return Tok(TokType.FACTOR, val, *fPos)
+        return left
 
     @_trace
     def power(self):
-        pos = self.s.pos()
-        val = [self.crement()]
 
+        left = self.crement()
         if self.s.is_match('**'):
             self.s.match('**')
-            val.append(self.factor())
+            pPos = self.s.pos()
+            right = self.factor()
+            left = Tree(Tok(TokType.POWER, *pPos), [left, right])
 
-        return Tok(TokType.POWER, val, *pos)
+        return left
 
     @_trace
     def crement(self):
-        val = []
-        line, col = self.s.pos()
 
-        val.append(self.primary())
+        pos = self.s.pos()
+        left = self.primary()
 
         if self.s.is_match('++'):
             self.s.match('++')
-            val.append(Tok(TokType.INCREMENT, ['++'], *self.s.pos()))
+            left = Tree(Tok(TokType.INCREMENT, *self.s.pos()), [left])
         elif self.s.is_match('--'):
             self.s.match('--')
-            val.append(Tok(TokType.DECREMENT, ['--'], *self.s.pos()))
+            left = Tree(Tok(TokType.DECREMENT, *self.s.pos()), [left])
         
-        return Tok(TokType.CREMENT, val, line, col)
+        return left
 
     @_trace
     def primary(self):
-        val = []
-        pPos= self.s.pos()
 
+        left = None
         if self.s.is_match('@'):
             self.s.match('@')
-            sPos = self.s.pos()
-            selfMember = self.primary()
-            val.append(Tok(TokType.SELFMEMBER, [selfMember], *sPos))
-
-            return Tok(TokType.PRIMARY, val, *pPos)
-
-        val.append(self.atom())
+            left = Tree(Tok(TokType.SELFMEMBER, *self.s.pos()), [self.primary()])
+        else:
+            left = self.atom()
 
         if self.s.is_match('('):
             cPos = self.s.pos()
             self.s.match('(')
             args = self.args()
             self.s.match(')')
-            val.append(Tok(TokType.CALL, [val.pop(), args], *cPos))
+            left = Tree(Tok(TokType.CALL, *cPos), [left, args])
 
         while not self.s.is_match('..') and self.s.is_match(['.', '[']):
             if self.s.is_match('.'):
                 mPos = self.s.pos()
                 self.s.match('.')
                 member = self.primary()
-                val.append(Tok(TokType.MEMBER, [member], *mPos))
+                left = Tree(Tok(TokType.MEMBER, *mPos), [left, member])
             
             elif self.s.is_match('['):
                 cPos = self.s.pos()
                 self.s.match('[')
                 args = self.args()
                 self.s.match(']')
-                val.append(Tok(TokType.INDEX, [val.pop(), args], *cPos))
+                left = Tree(Tok(TokType.INDEX, *cPos), [left, args])
 
-        return Tok(TokType.PRIMARY, val, *pPos)
+        return left
 
     @_trace
     def args(self):
         # TODO
-        pos = self.s.pos()
-        return Tok(TokType.ARGS, [[]], *pos)
+        return Tree(Tok(TokType.ARGS, *self.s.pos()), [[]])
 
     @_trace
     def atom(self):
-        val = []
-        line, col = self.s.pos()
-
+        left = None
         if self.s.is_match(ALPHAS + ['_']):
-            val.append(self.id())
+            left = self.id()
         else:
-            val.append(self.literal())
-        
-        return Tok(TokType.ATOM, val, line, col)
+            left = self.literal()
+        return left
 
     @_trace
     def id(self):
@@ -509,14 +602,11 @@ class Lexer:
         elif val == 'false':
             tokType = TokType.LIT_FALSE
 
-        return Tok(tokType, [val], line, col)
+        return Tree(Tok(tokType, line, col), [val])
 
 
     @_trace
     def literal(self):
-        val = None
-        line, col = self.s.pos()
-        
         if self.s.is_match('\"'):
             val = self.lit_string()
         else:
@@ -541,21 +631,21 @@ class Lexer:
                 val.append(self.str_base())
         self.s.match('\"')
         
-        return Tok(TokType.LIT_STRING, val, line, col)
+        return Tree(Tok(TokType.LIT_STRING, line, col), val)
 
     @_trace
     def str_base(self):
         val = ''
         line, col = self.s.pos()
 
-        while not self.s.is_match(['\"', '{', '}']):
+        while not self.s.is_match(['\"', '{', '}', '\\']):
             temp = self.s.consume()
             if temp is None:
                 break
             else:
                 val += temp
 
-        return Tok(TokType.STR_BASE, [val], line, col)
+        return Tree(Tok(TokType.STR_BASE, line, col), [val])
 
     @_trace
     def esc_char(self):
@@ -565,14 +655,15 @@ class Lexer:
         val += self.s.match('\\')
         val += self.s.match(['\\', 'b', 't', 'f', 'b', 'n', '\"'])
         
-        return Tok(TokType.ESC_CHAR, [val], line, col)
+        return Tree(Tok(TokType.ESC_CHAR, line, col), [val])
 
     @_trace
-    def lit_float(self):
+    def lit_float(self) -> Tree:
         val = ''
         line, col = self.s.pos()
         left = self.lit_int()
 
+        # Ignore ranges
         if self.s.is_match('..'):
             return left
 
@@ -580,14 +671,14 @@ class Lexer:
         if self.s.is_match('.'):
             dot = self.s.match('.')
             right = self.lit_int()
-            val = left.values + dot + right.values
-            return Tok(TokType.LIT_FLOAT, [val], line, col)
+            val = str(left.leaves[0] + dot + right.leaves[0])
+            return Tree(Tok(TokType.LIT_FLOAT, line, col), [val])
         
         # Otherwise just the int
         return left
 
     @_trace
-    def lit_int(self) -> Tok:
+    def lit_int(self) -> Tree:
         val = ''
         line, col = self.s.pos()
 
@@ -595,15 +686,11 @@ class Lexer:
         while self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
         
-        return Tok(TokType.LIT_INT, [val], line, col)
+        return Tree(Tok(TokType.LIT_INT, line, col), [val])
+
 
 lexer = Lexer('test.pb')
 
-
 print('-'*50)
 
-# pprint(lexer.toks)
-
-for tok in lexer.toks:
-    tok.tree()
-    # tok.simple()
+lexer.tree.printer()
