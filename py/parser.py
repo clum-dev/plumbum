@@ -33,6 +33,7 @@ class TextStream:
     col: int
 
     gotMatch: str
+    rewindIdx: int|None
     
     def __init__(self, filename:str) -> None:
 
@@ -43,6 +44,7 @@ class TextStream:
             self.index = 0
             self.line, self.col = 1, 0 
             self.gotMatch = None
+            self.rewindIdx = None
 
     def pos(self) -> Tuple[int, int]:
         return self.line, self.col
@@ -126,11 +128,7 @@ class TextStream:
         
         for _ in self.gotMatch:
             out = self.consume()
-
-        if skipSpace:
-            while self.is_match([' ', '\t']):
-                self.match([' ', '\t'], False)
-
+        
         return out
 
     def goto(self, cmatch:List[str]|str) -> str|None:
@@ -163,6 +161,10 @@ class TextStream:
             c = self.consume()
         
         return c
+    
+    def skip_space(self):
+        while self.is_match([' ', '\t']):
+            self.match([' ', '\t'], False)
 
     def expected(self, cmatch:List[str]|str, got:str|None=None) -> SyntaxError:
         if got is None:
@@ -182,17 +184,35 @@ class TokType(Enum):
     PROGRAM =       ['PROGRAM', None]
     EOF =           ['EOF', None]
     LINEBREAK =     ['LINEBREAK', '\n']
+    STMT_BREAK =    ['STMT_BREAK', ';']
 
     BLOCK =         ['BLOCK', None]
 
-    PIPE =          ['PIPE', None]
+    DEFINE =        ['DEFINE', 'var']
 
+    ASSIGN =        ['ASSIGN', '=']
+    ASSIGN_ADD =    ['ASSIGN', '+=']
+    ASSIGN_SUB =    ['ASSIGN', '-=']
+    ASSIGN_MULT =   ['ASSIGN', '*=']
+    ASSIGN_DIV =    ['ASSIGN', '/=']
+    ASSIGN_MOD =    ['ASSIGN', '%=']
 
+    STMT_SEQ =      ['STMT_SEQ', None]
     WHILE_STMT =    ['WHILE_STMT', 'while']
     FOR_STMT =      ['FOR_STMT', 'for']
     IF_STMT =       ['IF_STMT', 'if']
     ELSE_IF_STMT =  ['ELSE_IF_STMT', 'else if']
     ELSE_STMT =     ['ELSE_STMT', 'else']
+
+    PIPE_DIST =     ['PIPE_DIST', '|<']
+    PIPE_FUNNEL =   ['PIPE_FUNNEL', '|>']
+    PIPE_PAIR =     ['PIPE_PAIR', '|:']
+    PIPE_MAP =      ['PIPE_MAP', '|@']
+    PIPE_FILTER =   ['PIPE_FILTER', '|?']
+    PIPE_REDUCE =   ['PIPE_REDUCE', '|_']
+    PIPE_EACH =     ['PIPE_EACH', '|%']
+    PIPE_SUM =      ['PIPE_SUM', '|+']
+    PIPE =          ['PIPE', '|']
 
     EXPR_SEQ =      ['EXPR_SEQ', None]
     LAMBDA_EXPR =   ['LAMBDA_EXPR', ':>']
@@ -245,7 +265,8 @@ class TokType(Enum):
 
     ARGS =          ['ARGS', None]
     ATOM =          ['ATOM', None]
-    PARAM_LIST =    ['PARAM_LIST', None]
+    LIST_RAW =      ['LIST_RAW', None]
+    PARAM_SEQ =     ['PARAM_SEQ', None]
     PARAM =         ['PARAM', None]
     ID =            ['ID', None]
 
@@ -339,6 +360,9 @@ class Lexer:
         self.tree = Tree(Tok(TokType.PROGRAM, 0, 0))
 
         while not self.s.at_end():
+            self.s.skip([' ', '\n', '\t'])
+            if self.s.at_end():
+                return
             self.tree.add(self.begin())
 
     def begin(self):
@@ -350,17 +374,23 @@ class Lexer:
         vals = []
         pos = self.s.pos()
 
+        self.s.skip_space()
         self.s.match('{')
+        self.s.skip_space()
+
         while not self.s.is_match('}'):
             if self.s.is_match('\n'):
                 self.s.match('\n')
                 vals.append(Tok(TokType.LINEBREAK, *self.s.pos()))
 
-            elif self.s.is_match('{'):
-                vals.append(self.block())
+            elif self.s.is_match(';'):
+                self.s.match(';')
+                vals.append(Tok(TokType.STMT_BREAK, *self.s.pos()))
                 
             else:
-                vals.append(self.while_stmt())
+                vals.append(self.stmt())
+            
+            self.s.skip_space()
 
         self.s.match('}')
 
@@ -368,20 +398,22 @@ class Lexer:
 
 
     '''
-    Statements
+    Top Level
     '''
 
     @_trace
-    def statement(self):
-        left = None
-        if self.s.is_match('while'):
-            left = self.while_stmt()
-        elif self.s.is_match('for'):
-            left = self.for_stmt()
-        elif self.s.is_match('if'):
-            left = self.if_stmt()
-        else:
-            pass # TODO
+    def tl_func(self):
+        pass
+    
+    
+
+    '''
+    Statements
+    '''
+    
+    @_trace
+    def stmt(self):    
+        return self.while_stmt()
 
     @_trace
     def while_stmt(self):
@@ -389,12 +421,18 @@ class Lexer:
         if self.s.is_match('while'):
             whilePos = self.s.pos()
             self.s.match('while')
+            self.s.skip_space()
+
             cond = self.log_tern()
+            self.s.skip_space()
 
             post = None
             if self.s.is_match(':'):
                 self.s.match(':')
+                self.s.skip_space()
+
                 post = self.sum()
+                self.s.skip_space()
             
             block = self.block()
 
@@ -409,15 +447,25 @@ class Lexer:
             
             forPos = self.s.pos()
             self.s.match('for')
-            iterable = self.primary()
-            captures = []
+            self.s.skip_space()
 
+            iterable = self.primary()
+            self.s.skip_space()
+
+            captures = []
             if self.s.is_match('->'):
                 self.s.match('->')
+                self.s.skip_space()
+
                 captures.append(self.id())
+                self.s.skip_space()
+
                 while self.s.is_match(','):
                     self.s.match(',')
+                    self.s.skip_space()
+                    
                     captures.append(self.id())
+                    self.s.skip_space()
 
             block = self.block()
 
@@ -429,26 +477,32 @@ class Lexer:
     def if_stmt(self):
         
         if self.s.is_match('if'):
-
-            ifPos = self.s.pos()
             self.s.match('if')
+            ifPos = self.s.pos()
+            self.s.skip_space()
+
             cond = self.log_tern()
+            self.s.skip_space()
+
             ifBlock = self.block()
             elseIfs = []
 
             while self.s.is_match('else if'):
                 elseIfs.append(self.else_if_stmt())
+                self.s.skip_space()
             
             if self.s.is_match('else'):
                 elseIfs.append(self.else_stmt)
+                self.s.skip_space()
 
             return Tree(Tok(TokType.IF_STMT, *ifPos), [cond, ifBlock, elseIfs])
             
-        return self.expr_seq()
+        return self.assign()
     
     @_trace
     def else_if_stmt(self):
         self.s.match('else if')
+        self.s.skip_space()
         pos = self.s.pos()
         cond = self.log_tern()
         elseIfBlock = self.block()
@@ -458,11 +512,63 @@ class Lexer:
     @_trace
     def else_stmt(self):
         self.s.match('else')
+        self.s.skip_space()
         elsePos = self.s.pos()
         elseBlock = self.block()
 
         return Tree(Tok(TokType.ELSE_STMT, *elsePos), [elseBlock])
 
+    @_trace
+    def assign(self):
+
+        '''
+        TODO:
+        - fix the conflict between param definitions and pipeline
+        '''
+
+        # left = None
+        # # Decide between definitions and pipeline
+        # self.s.rewindIdx = self.s.index
+        # try:
+        #     # print(f'before: {self.s.curr()}')
+        #     left = self.param_seq(False)
+        # except:
+        #     if self.s.rewindIdx is not None:
+        #         self.s.index = self.s.rewindIdx
+        #         # print(f'after: {self.s.curr()}')
+        #         left = self.pipeline()
+        
+        # self.s.rewindIdx = None     
+
+        left = self.pipeline()
+        self.s.skip_space()
+
+        pos = self.s.pos()
+        assign = None
+        if self.s.is_match('='):
+            self.s.match('=')
+            assign = TokType.ASSIGN
+        elif self.s.is_match('+='):
+            self.s.match('+=')
+            assign = TokType.ASSIGN_ADD
+        elif self.s.is_match('-='):
+            self.s.match('-=')
+            assign = TokType.ASSIGN_SUB
+        elif self.s.is_match('*='):
+            self.s.match('*=')
+            assign = TokType.ASSIGN_MULT
+        elif self.s.is_match('/='):
+            self.s.match('/=')
+            assign = TokType.ASSIGN_DIV
+        elif self.s.is_match('%='):
+            self.s.match('%=')
+            assign = TokType.ASSIGN_MOD
+        else:
+            return left
+        
+        self.s.skip_space()
+        return Tree(Tok(assign, *pos), [left, self.pipeline()])
+    
     '''
     Expressions
     '''
@@ -470,21 +576,53 @@ class Lexer:
     @_trace
     def pipeline(self):
         left = self.expr_seq()
+        self.s.skip_space()
+        pos = self.s.pos()
+        tokType = None
 
-        if self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+', '|-']):
-            pass
-            # TODO
+        if self.s.is_match('|<'):
+            self.s.match('|<')
+            tokType = TokType.PIPE_DIST
+        elif self.s.is_match('|>'):
+            self.s.match('|>')
+            tokType = TokType.PIPE_FUNNEL
+        elif self.s.is_match('|:'):
+            self.s.match('|:')
+            tokType = TokType.PIPE_PAIR
+        elif self.s.is_match('|@'):
+            self.s.match('|@')
+            tokType = TokType.PIPE_MAP
+        elif self.s.is_match('|?'):
+            self.s.match('|?')
+            tokType = TokType.PIPE_FILTER
+        elif self.s.is_match('|_'):
+            self.s.match('|_')
+            tokType = TokType.PIPE_REDUCE
+        elif self.s.is_match('|%'):
+            self.s.match('|%')
+            tokType = TokType.PIPE_EACH
+        elif self.s.is_match('|+'):
+            self.s.match('|+')
+            tokType = TokType.PIPE_SUM
+        else:
+            return left
 
+        self.s.skip_space()
+        right = self.pipeline()
+
+        return Tree(Tok(tokType, *pos), [left, right])
 
     @_trace
     def expr_seq(self):
 
         left = self.expr()
+        self.s.skip_space()
         pos = self.s.pos()
         right = []
 
         while self.s.is_match(','):
             self.s.match(',')
+            self.s.skip_space()
             right.append(self.expr())
         
         if len(right) == 0:
@@ -497,6 +635,8 @@ class Lexer:
     @_trace
     def expr(self):
 
+        if self.s.is_match('{'):
+            return self.block()
         if self.s.is_match(':>'):
             return self.lambda_expr()
         else:
@@ -505,11 +645,14 @@ class Lexer:
     @_trace
     def pipe(self) -> Tree:
         left = self.log_tern()
+        self.s.skip_space()
         
-        while self.s.is_match('|'):
+        while not self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+']) and self.s.is_match('|'):
             self.s.match('|')
+            self.s.skip_space()
+
             pos = self.s.pos()
-            return Tree(Tok(TokType.PIPE, *pos), [left, self.pipe()])
+            left = Tree(Tok(TokType.PIPE, *pos), [left, self.pipe()])
         
         return left
 
@@ -519,21 +662,35 @@ class Lexer:
         pos = self.s.pos()
 
         self.s.match(':>')
-        params = self.param_list()
+        self.s.skip_space()
+
+        params = self.param_seq()
+        self.s.skip_space()
+
         right = self.block()
+        self.s.skip_space()
 
         return Tree(Tok(TokType.LAMBDA_EXPR, *pos), [params, right])
 
     @_trace
     def log_tern(self):
         left = self.log_or()
+        self.s.skip_space()
 
         if self.s.is_match('?'):
             self.s.match('?')
+            self.s.skip_space()
+            
             pos = self.s.pos()
             ifTrue = self.log_tern()
+            self.s.skip_space()
+
             self.s.match(':')
+            self.s.skip_space()
+
             ifFalse = self.log_tern()
+            self.s.skip_space()
+
             left = Tree(Tok(TokType.LOG_TERN, *pos), [left, ifTrue, ifFalse])
         
         return left
@@ -541,9 +698,11 @@ class Lexer:
     @_trace
     def log_or(self):
         left = self.log_and()
+        self.s.skip_space()
 
         while self.s.is_match('or'):
             self.s.match('or')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_OR, *pos), [left, self.log_and()])
 
@@ -552,9 +711,11 @@ class Lexer:
     @_trace
     def log_and(self):
         left = self.log_not()
+        self.s.skip_space()
 
         while self.s.is_match('and'):
             self.s.match('and')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_AND, *pos), [left, self.log_not()])
 
@@ -566,11 +727,14 @@ class Lexer:
         left = None
         while self.s.is_match('not'):
             self.s.match('not')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_NOT, *pos), [self.log_not()])
-        
+
+        self.s.skip_space()
         if left is None:
             left = self.comp()
+            self.s.skip_space()
 
         return left
 
@@ -578,33 +742,41 @@ class Lexer:
     def comp(self):
         
         left = self.b_not()
+        self.s.skip_space()
         pos = self.s.pos()
 
         while self.s.is_match(['==', '!=', '<', '>', '<=', '>=']):
             if self.s.is_match('=='):
                 self.s.match('==')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_EQ, *pos), [left, self.b_not()])
 
             elif self.s.is_match('!='):
                 self.s.match('!=')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_NEQ, *pos), [left, self.b_not()])
 
             elif self.s.is_match('<'):
                 self.s.match('<')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_LT, *pos), [left, self.b_not()])
 
             elif self.s.is_match('>'):
                 self.s.match('>')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_GT, *pos), [left, self.b_not()])
 
             elif self.s.is_match('<='):
                 self.s.match('<=')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_LTE, *pos), [left, self.b_not()])
 
             elif self.s.is_match('>='):
                 self.s.match('>=')
+                self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_GTE, *pos), [left, self.b_not()])
-            
+
+        self.s.skip_space()
         return left
 
     @_trace
@@ -613,20 +785,24 @@ class Lexer:
         left = None
         while self.s.is_match('*~'):
             self.s.match('*~')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_NOT, *pos), [self.b_not()])
         
         if left is None:
             left = self.b_or()
 
+        self.s.skip_space()
         return left
 
     @_trace
     def b_or(self):
         left = self.b_xor()
+        self.s.skip_space()
 
         while self.s.is_match('*|'):
             self.s.match('*|')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_OR, *pos), [left, self.b_xor()])
         
@@ -635,9 +811,11 @@ class Lexer:
     @_trace
     def b_xor(self):
         left = self.b_and()
+        self.s.skip_space()
 
         while self.s.is_match('*^'):
             self.s.match('*^')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_XOR, *pos), [left, self.b_and()])
         
@@ -646,9 +824,11 @@ class Lexer:
     @_trace
     def b_and(self):
         left = self.b_shift()
+        self.s.skip_space()
 
         while self.s.is_match('*&'):
             self.s.match('*&')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_AND, *pos), [left, self.b_shift()])
 
@@ -658,13 +838,17 @@ class Lexer:
     def b_shift(self):
         
         left = self.data_range()
+        self.s.skip_space()
+
         if self.s.is_match('<<'):
             self.s.match('<<')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_SHL, *pos), [left, self.b_shift()])
     
         elif self.s.is_match('>>'):
             self.s.match('>>')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_SHR, *pos), [left, self.b_shift()])
         
@@ -673,8 +857,10 @@ class Lexer:
     @_trace
     def data_range(self):
         left = self.sum()
+        self.s.skip_space()
         if self.s.is_match('..'):
             self.s.match('..')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.RANGE, *pos), [left, self.sum()])
 
@@ -685,15 +871,18 @@ class Lexer:
 
         pos = self.s.pos()
         left = self.term()
+        self.s.skip_space()
 
         while not self.s.is_match('->') and self.s.is_match(['+', '-']):
             if self.s.is_match('+'):
                 self.s.match('+')
+                self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.ADD, *pos), [left, self.term()])
 
             elif self.s.is_match('-'):
                 self.s.match('-')
+                self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.SUB, *pos), [left, self.term()])
 
@@ -703,20 +892,24 @@ class Lexer:
     def term(self):
 
         left = self.factor()
+        self.s.skip_space()
 
         while not self.s.is_match(['*&', '*^', '*|', '*~']) and self.s.is_match(['*', '/', '%']):
             if self.s.is_match('*'):
                 self.s.match('*')
+                self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.MULT, *pos), [left, self.factor()])
             
             elif self.s.is_match('/'):
                 self.s.match('/')
+                self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.DIV, *pos), [left, self.factor()])
             
             elif self.s.is_match('%'):
                 self.s.match('%')
+                self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.MOD, *pos), [left, self.factor()])
                 
@@ -727,18 +920,15 @@ class Lexer:
 
         left = None
 
-        if self.s.is_match('('):
-            self.s.match('(')
-            left = self.sum()
-            self.s.match(')')
-
-        elif not self.s.is_match('++') and self.s.is_match('+'):
+        if not self.s.is_match('++') and self.s.is_match('+'):
             self.s.match('+')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.POSATE, *pos), [self.power()])
 
         elif not self.s.is_match('--') and self.s.is_match('-'):
             self.s.match('-')
+            self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.NEGATE, *pos), [self.power()])
         
@@ -753,6 +943,7 @@ class Lexer:
         left = self.crement()
         if self.s.is_match('**'):
             self.s.match('**')
+            self.s.skip_space()
             pPos = self.s.pos()
             right = self.factor()
             left = Tree(Tok(TokType.POWER, *pPos), [left, right])
@@ -784,25 +975,49 @@ class Lexer:
         else:
             left = self.atom()
 
+        self.s.skip_space()
         if self.s.is_match('('):
             cPos = self.s.pos()
+            self.s.skip_space()
             self.s.match('(')
-            args = self.expr_seq()
-            self.s.match(')')
+            self.s.skip_space()
+
+            args = None
+            if self.s.is_match(')'):
+                self.s.skip_space()
+                self.s.match(')')
+            else:
+                args = self.expr_seq()
+                self.s.skip_space()
+                self.s.match(')')
             left = Tree(Tok(TokType.CALL, *cPos), [left, args])
 
+        self.s.skip_space()
         while not self.s.is_match('..') and self.s.is_match(['.', '[']):
+            self.s.skip_space()
             if self.s.is_match('.'):
+                self.s.skip_space()
                 mPos = self.s.pos()
                 self.s.match('.')
+                self.s.skip_space()
+
                 member = self.primary()
                 left = Tree(Tok(TokType.MEMBER, *mPos), [left, member])
             
             elif self.s.is_match('['):
                 cPos = self.s.pos()
+                self.s.skip_space()
                 self.s.match('[')
-                args = self.expr_seq()
-                self.s.match(']')
+                self.s.skip_space()
+
+                args = None
+                if self.s.is_match(']'):
+                    self.s.skip_space()
+                    self.s.match(']')
+                else:
+                    args = self.expr_seq()
+                    self.s.skip_space()
+                    self.s.match(']')
                 left = Tree(Tok(TokType.INDEX, *cPos), [left, args])
 
         return left
@@ -812,30 +1027,48 @@ class Lexer:
         left = None
         if self.s.is_match(ALPHAS + ['_']):
             left = self.id()
+        elif self.s.is_match('['):
+            left = self.list_raw()
         else:
             left = self.literal()
 
         return left
 
     @_trace
-    def param_list(self):
+    def list_raw(self):
+        pos = self.s.pos()
+        self.s.match('[')
+        args = None
+        if self.s.is_match(']'):
+            self.s.match(']')
+            self.s.skip_space()
+        else:
+            args = self.expr_seq()
+            self.s.match(']')
+            self.s.skip_space()
+
+        return Tree(Tok(TokType.LIST_RAW, *pos), [args])
+
+    @_trace
+    def param_seq(self, allowDefault:bool=True):
         
         pos = self.s.pos()
-        left = self.param()
+        left = self.param(allowDefault)
         params = []
                 
         while self.s.is_match(','):
             self.s.match(',')
-            params.append(self.param())
+            self.s.skip_space()
+            params.append(self.param(allowDefault))
         
         if len(params) == 0:
             return left
         
         params.insert(0, left)
-        return Tree(Tok(TokType.PARAM_LIST, *pos), params)
+        return Tree(Tok(TokType.PARAM_SEQ, *pos), params)
     
     @_trace
-    def param(self):
+    def param(self, allowDefault:bool=True):
         
         pos = self.s.pos()
         left = self.id()
@@ -844,10 +1077,12 @@ class Lexer:
 
         if self.s.is_match(':'):
             self.s.match(':')
+            self.s.skip_space()
             tComp = self.type_comp()
         
-        if self.s.is_match('='):
+        if allowDefault and self.s.is_match('='):
             self.s.match('=')
+            self.s.skip_space()
             default = self.log_tern()
 
         if tComp is None and default is None:
@@ -909,7 +1144,7 @@ class Lexer:
         val += self.s.match(ALPHAS + ['_'])
         while self.s.is_match(ALPHAS + DIGITS + ['_']):
             val += self.s.match(ALPHAS + DIGITS + ['_'])
-        
+                
         tokType = TokType.ID
         match val:
             case 'true':
@@ -931,7 +1166,7 @@ class Lexer:
                 tokType = TokType.TYPE_ANY
             
         return Tree(Tok(tokType, line, col), [val])
-
+    
     @_trace
     def literal(self):
         if self.s.is_match('\"'):
@@ -948,7 +1183,7 @@ class Lexer:
 
         self.s.match('\"')
         while not self.s.is_match('\"'):
-            if self.s.at_end():
+            if self.s.is_match('\n') or self.s.at_end():
                 self.s.expected('\"')
             elif self.s.is_match('{'):
                 val.append(self.block())
@@ -965,7 +1200,9 @@ class Lexer:
         val = ''
         line, col = self.s.pos()
 
-        while not self.s.is_match(['\"', '{', '}', '\\']):
+        print(f'curr: {self.s.curr()}')
+
+        while not self.s.is_match(['\"', '{', '\\', '\n']):
             temp = self.s.consume()
             if temp is None:
                 break
@@ -1008,6 +1245,12 @@ class Lexer:
     def lit_int(self) -> Tree:
         val = ''
         line, col = self.s.pos()
+
+        if self.s.is_match('('):
+            self.s.match('(')
+            left = self.begin()
+            self.s.match(')')
+            return left
 
         if self.s.at_end():
             raise NotImplementedError('at end')
