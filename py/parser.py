@@ -10,16 +10,8 @@ LOWERS = [chr(c) for c in list(range(ord('a'), ord('z')+1))]
 ALPHAS = UPPERS + LOWERS
 WHITESPACE = [' ', '\t']
 
-indent = 0
-
-'''
-TEST STRINGS:
-
-a()[].b()--**+2++..c().d()
-
-1 + 2 ** 3 * 4
-
-'''
+indent:int = 0
+debug:bool
 
 class TextStream:
     
@@ -123,8 +115,10 @@ class TextStream:
             cmatch = f'[{cmatch[0]}, {cmatch[1]} ... {cmatch[-2]}, {cmatch[-1]}]'
 
         global indent
+        global debug
         shift = '  ' * indent
-        print(f'{shift}matched `{repr(self.gotMatch)}` to `{repr(cmatch)}`')
+        if debug:
+            print(f'{shift}matched `{repr(self.gotMatch)}` to `{repr(cmatch)}`')
         
         for _ in self.gotMatch:
             out = self.consume()
@@ -174,9 +168,7 @@ class TextStream:
                     if c == '\n':
                         break
                 else:
-                    break
-        
-                
+                    break               
 
     def expected(self, cmatch:List[str]|str, got:str|None=None) -> SyntaxError:
         if got is None:
@@ -306,8 +298,8 @@ class TokType(Enum):
     LIT_INT =       ['LIT_INT', None]
     LIT_FLOAT =     ['LIT_FLOAT', None]
     LIT_STRING =    ['LIT_STRING', None]
-    LIT_TRUE =      ['LIT_TRUE', 'true']
-    LIT_FALSE =     ['LIT_FALSE', 'false']
+    LIT_TRUE =      ['LIT_TRUE', 'True']
+    LIT_FALSE =     ['LIT_FALSE', 'False']
     ESC_CHAR =      ['ESC_CHAR', None]
     STR_BASE =      ['STR_BASE', None]
 
@@ -355,13 +347,13 @@ class Tree:
                 leaf.printer(indent + 1)
             else:
                 shift = ' ' * (indent + 1)
-                print(f'{shift}{leaf}')
-        
+                print(f'{shift}{leaf}')  
+
     def __str__(self) -> str:
         return '{' + f'{self.tok}: {str(self.leaves)}' + '}'
 
 
-class Lexer:
+class Parser:
 
     tree:Tree
     s:TextStream
@@ -369,16 +361,20 @@ class Lexer:
     def _trace(func:callable):
         def wrapper(*args, **kwargs):
             global indent
+            global debug
             shift = '  ' * indent
             indent += 1
-            print(f'{shift}[[{func.__name__}]]')
+            if debug:
+                print(f'{shift}[[{func.__name__}]]')
             result = func(*args, **kwargs)
             indent -= 1
             return result
         return wrapper
     
-    def __init__(self, filename) -> None:
+    def __init__(self, filename, showDebug:bool=False) -> None:
         self.s = TextStream(filename)
+        global debug 
+        debug = showDebug
         self.tree = Tree(Tok(TokType.PROGRAM, 0, 0))
 
         while not self.s.at_end():
@@ -425,7 +421,7 @@ class Lexer:
 
     @_trace
     def top_level(self):
-        tl = ['func', 'struct', 'const', 'import', '#']
+        tl = ['func', 'struct', 'const', 'var', 'import', '#']
         if self.s.is_match(tl):
             if self.s.is_match('func'):
                 return self.func_def()
@@ -433,6 +429,8 @@ class Lexer:
                 return self.struct_def()
             elif self.s.is_match('const'):
                 return self.const_def()
+            elif self.s.is_match('var'):
+                return self.define()
             elif self.s.is_match('import'):
                 return self.import_def()
             elif self.s.is_match('#'):
@@ -452,7 +450,9 @@ class Lexer:
         self.s.skip_space()
 
         params = None
+        pipe = None
         if self.s.is_match('('):
+            pipe = Tok(TokType.PIPE_PAIR, *self.s.pos())
             self.s.match('(')
             self.s.skip_space()
             if self.s.is_match(')'):
@@ -462,12 +462,16 @@ class Lexer:
                 self.s.match(')')
         
         elif self.s.is_match(['|<', '|>', '|:']):
+            pipePos = self.s.pos()
             if self.s.is_match('|<'):
-                self.s.match('|>')
+                self.s.match('|<')
+                pipe = Tok(TokType.PIPE_DIST, *pipePos)
             elif self.s.is_match('|>'):
                 self.s.match('|>')
+                pipe = Tok(TokType.PIPE_FUNNEL, *pipePos)
             elif self.s.is_match('|:'):
                 self.s.match('|:')
+                pipe = Tok(TokType.PIPE_PAIR, *pipePos)
             
             self.s.skip_space()
             params = self.param_seq()
@@ -482,7 +486,7 @@ class Lexer:
         self.s.skip_space()
         block = self.block()
 
-        return Tree(Tok(TokType.FUNC, *pos), [name, params, retType, block])
+        return Tree(Tok(TokType.FUNC, *pos), [name, params, pipe, retType, block])
 
     @_trace
     def struct_def(self):
@@ -1377,9 +1381,9 @@ class Lexer:
                 
         tokType = TokType.ID
         match val:
-            case 'true':
+            case 'True':
                 tokType = TokType.LIT_TRUE
-            case 'false':
+            case 'False':
                 tokType = TokType.LIT_FALSE
 
             case 'int':
@@ -1429,8 +1433,6 @@ class Lexer:
     def str_base(self):
         val = ''
         line, col = self.s.pos()
-
-        print(f'curr: {self.s.curr()}')
 
         while not self.s.is_match(['\"', '{', '\\', '\n']):
             temp = self.s.consume()
@@ -1500,10 +1502,3 @@ class Lexer:
         
         return Tree(Tok(TokType.LIT_INT, line, col), [val])
 
-
-# lexer = Lexer('test.pb')
-lexer = Lexer('test2.pb')
-
-print('-'*50)
-
-lexer.tree.printer()
