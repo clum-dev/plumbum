@@ -149,22 +149,34 @@ class TextStream:
         return c
 
     def skip(self, cmatch:List[str]|str) -> None:
-        c = self.curr()
-        
-        while c != None:
-            if isinstance(cmatch, list):
-                if c not in cmatch:
-                    break
-            elif isinstance(cmatch, str):
-                if c != cmatch:
-                    break    
-            c = self.consume()
-        
-        return c
+        while self.is_match(cmatch):
+            self.match(cmatch, False)
     
-    def skip_space(self):
-        while self.is_match([' ', '\t']):
-            self.match([' ', '\t'], False)
+    def skip_space(self, newline:bool=False) -> int:
+        count = 0
+        skips = [' ', '\t']
+        if newline:
+            skips.append('\n')
+        
+        while self.is_match(skips):
+            self.match(skips, False)
+            count += 1
+        return count
+
+    def skip_comment(self):
+        if self.is_match('#'):
+            self.match('#')
+            c = None
+            while not self.at_end():
+                c = self.curr()
+                if c is not None:
+                    self.match(c)
+                    if c == '\n':
+                        break
+                else:
+                    break
+        
+                
 
     def expected(self, cmatch:List[str]|str, got:str|None=None) -> SyntaxError:
         if got is None:
@@ -185,17 +197,24 @@ class TokType(Enum):
     EOF =           ['EOF', None]
     LINEBREAK =     ['LINEBREAK', '\n']
     STMT_BREAK =    ['STMT_BREAK', ';']
+    COMMENT =       ['COMMENT', '#']
+
+    FUNC =          ['FUNC', 'func']
+    STRUCT =        ['STRUCT', 'struct']
+    CONST =         ['CONST', 'const']
+    IMPORT =        ['IMPORT', 'import']
 
     BLOCK =         ['BLOCK', None]
 
+    SUBST =         ['SUBST', '=>']
     DEFINE =        ['DEFINE', 'var']
 
     ASSIGN =        ['ASSIGN', '=']
-    ASSIGN_ADD =    ['ASSIGN', '+=']
-    ASSIGN_SUB =    ['ASSIGN', '-=']
-    ASSIGN_MULT =   ['ASSIGN', '*=']
-    ASSIGN_DIV =    ['ASSIGN', '/=']
-    ASSIGN_MOD =    ['ASSIGN', '%=']
+    ASSIGN_ADD =    ['ASSIGN_ADD', '+=']
+    ASSIGN_SUB =    ['ASSIGN_SUB', '-=']
+    ASSIGN_MULT =   ['ASSIGN_MULT', '*=']
+    ASSIGN_DIV =    ['ASSIGN_DIV', '/=']
+    ASSIGN_MOD =    ['ASSIGN_MOD', '%=']
 
     STMT_SEQ =      ['STMT_SEQ', None]
     WHILE_STMT =    ['WHILE_STMT', 'while']
@@ -258,7 +277,10 @@ class TokType(Enum):
     DECREMENT =     ['DECREMENT', '--']
 
     PRIMARY =       ['PRIMARY', None]
-    SELFMEMBER =    ['SELFMEMBER', None]
+    STREAM =        ['STREAM', '$$']
+    STREAMINDEX =   ['STREAMINDEX', '$']
+    STRUCTMEMBER =  ['STRUCTMEMBER', '.']
+    SELFMEMBER =    ['SELFMEMBER', '@']
     MEMBER =        ['MEMBER', None]
     INDEX =         ['INDEX', None]
     CALL =          ['CALL', None]
@@ -366,7 +388,7 @@ class Lexer:
             self.tree.add(self.begin())
 
     def begin(self):
-        return self.block()
+        return self.top_level()
     
     @_trace
     def block(self):
@@ -376,7 +398,7 @@ class Lexer:
 
         self.s.skip_space()
         self.s.match('{')
-        self.s.skip_space()
+        self.s.skip_space(newline=True)
 
         while not self.s.is_match('}'):
             if self.s.is_match('\n'):
@@ -388,7 +410,7 @@ class Lexer:
                 vals.append(Tok(TokType.STMT_BREAK, *self.s.pos()))
                 
             else:
-                vals.append(self.stmt())
+                vals.append(self.subst())
             
             self.s.skip_space()
 
@@ -402,17 +424,185 @@ class Lexer:
     '''
 
     @_trace
-    def tl_func(self):
-        pass
-    
-    
+    def top_level(self):
+        tl = ['func', 'struct', 'const', 'import', '#']
+        if self.s.is_match(tl):
+            if self.s.is_match('func'):
+                return self.func_def()
+            elif self.s.is_match('struct'):
+                return self.struct_def()
+            elif self.s.is_match('const'):
+                return self.const_def()
+            elif self.s.is_match('import'):
+                return self.import_def()
+            elif self.s.is_match('#'):
+                pos = self.s.pos()
+                self.s.skip_comment()
+                return Tree(Tok(TokType.COMMENT, *pos))
+        else:
+            self.s.expected(tl)
+        
+    @_trace
+    def func_def(self):
+        pos = self.s.pos()
+        self.s.match('func')
+        self.s.skip_space()
+
+        name = self.id()
+        self.s.skip_space()
+
+        params = None
+        if self.s.is_match('('):
+            self.s.match('(')
+            self.s.skip_space()
+            if self.s.is_match(')'):
+                self.s.match(')')
+            else:
+                params = self.param_seq()
+                self.s.match(')')
+        
+        elif self.s.is_match(['|<', '|>', '|:']):
+            if self.s.is_match('|<'):
+                self.s.match('|>')
+            elif self.s.is_match('|>'):
+                self.s.match('|>')
+            elif self.s.is_match('|:'):
+                self.s.match('|:')
+            
+            self.s.skip_space()
+            params = self.param_seq()
+
+        self.s.skip_space()
+        retType = None
+        if self.s.is_match('->'):
+            self.s.match('->')
+            self.s.skip_space()
+            retType = self.type_comp()
+        
+        self.s.skip_space()
+        block = self.block()
+
+        return Tree(Tok(TokType.FUNC, *pos), [name, params, retType, block])
+
+    @_trace
+    def struct_def(self):
+        pos = self.s.pos()
+        self.s.match('struct')
+        self.s.skip_space()
+
+        name = self.id()
+        self.s.skip_space()
+
+        members = []
+        self.s.match('{')
+        self.s.skip_space(newline=True)
+        while not self.s.is_match('}'):
+            if self.s.is_match('var'):
+                members.append(self.define())
+            elif self.s.is_match('func'):
+                members.append(self.func_def())
+            elif self.s.is_match('struct'):
+                members.append(self.struct_def())
+            elif self.s.is_match('const'):
+                members.append(self.const_def())
+            else:
+                raise SyntaxError('struct')
+            
+            self.s.skip_space(newline=True)
+        self.s.match('}')
+
+        return Tree(Tok(TokType.STRUCT, *pos), [name, *members])
+
+    @_trace
+    def const_def(self):
+        pos = self.s.pos()
+        self.s.match('const')
+        self.s.skip_space()
+
+        if self.s.is_match('{'):
+            left = []
+            self.s.match('{')
+            self.s.skip_space(newline=True)
+
+            while not self.s.is_match('}'):
+                left.append(self.param_seq())
+                self.s.skip_space(newline=True)
+
+            self.s.match('}')
+            return Tree(Tok(TokType.CONST, *pos), [*left])
+
+        left = self.param_seq(False)
+        self.s.skip_space()
+
+        right = None
+        if self.s.is_match('='):
+            self.s.skip_space()
+            self.s.match('=')
+            self.s.skip_space()
+            right = self.pipeline()
+        
+        return Tree(Tok(TokType.CONST, *pos), [left, right])
+
+    @_trace
+    def import_def(self):
+        pos = self.s.pos()
+        self.s.match('import')
+        self.s.skip_space()
+
+        if self.s.is_match('{'):
+            left = []
+            self.s.match('{')
+            self.s.skip_space(newline=True)
+
+            while not self.s.is_match('}'):
+                iPos = self.s.pos()
+                name, alias = self.import_name()
+
+                left.append(Tree(Tok(TokType.IMPORT, *iPos), [name, alias]))
+                self.s.skip_space(newline=True)
+                
+            self.s.match('}')
+            return Tree(Tok(TokType.IMPORT, *pos), [*left])
+
+        name, alias = self.import_name()
+        return Tree(Tok(TokType.IMPORT, *pos), [name, alias])
+
+    @_trace
+    def import_name(self) -> Tuple:
+        left = self.id()
+        self.s.skip_space()
+
+        right = None
+        if self.s.is_match('=>'):
+            self.s.skip_space()
+            self.s.match('=>')
+            self.s.skip_space()
+            right = self.id()
+
+        return left, right
 
     '''
     Statements
     '''
     
     @_trace
+    def subst(self):
+        left = self.stmt()
+        self.s.skip_space()
+        if self.s.is_match('=>'):
+            pos = self.s.pos()
+            self.s.match('=>')
+            self.s.skip_space()
+            right = self.id()
+            return Tree(Tok(TokType.SUBST, *pos), [left, right])
+
+        return left
+
+    @_trace
     def stmt(self):    
+        if self.s.is_match('var'):
+            return self.define()
+
         return self.while_stmt()
 
     @_trace
@@ -485,6 +675,7 @@ class Lexer:
             self.s.skip_space()
 
             ifBlock = self.block()
+            self.s.skip_space()
             elseIfs = []
 
             while self.s.is_match('else if'):
@@ -492,10 +683,10 @@ class Lexer:
                 self.s.skip_space()
             
             if self.s.is_match('else'):
-                elseIfs.append(self.else_stmt)
+                elseIfs.append(self.else_stmt())
                 self.s.skip_space()
 
-            return Tree(Tok(TokType.IF_STMT, *ifPos), [cond, ifBlock, elseIfs])
+            return Tree(Tok(TokType.IF_STMT, *ifPos), [cond, ifBlock, *elseIfs])
             
         return self.assign()
     
@@ -519,29 +710,44 @@ class Lexer:
         return Tree(Tok(TokType.ELSE_STMT, *elsePos), [elseBlock])
 
     @_trace
-    def assign(self):
+    def define(self):
+        pos = self.s.pos()
+        self.s.match('var')
+        self.s.skip_space()
 
-        '''
-        TODO:
-        - fix the conflict between param definitions and pipeline
-        '''
+        if self.s.is_match('{'):
+            left = []
+            self.s.match('{')
+            self.s.skip_space(newline=True)
 
-        # left = None
-        # # Decide between definitions and pipeline
-        # self.s.rewindIdx = self.s.index
-        # try:
-        #     # print(f'before: {self.s.curr()}')
-        #     left = self.param_seq(False)
-        # except:
-        #     if self.s.rewindIdx is not None:
-        #         self.s.index = self.s.rewindIdx
-        #         # print(f'after: {self.s.curr()}')
-        #         left = self.pipeline()
+            while not self.s.is_match('}'):
+                left.append(self.param_seq())
+                self.s.skip_space(newline=True)
+
+            self.s.match('}')
+            return Tree(Tok(TokType.DEFINE, *pos), [*left])
+
+        left = self.param_seq(False)
+        self.s.skip_space()
+
+        right = None
+        if self.s.is_match('='):
+            self.s.skip_space()
+            self.s.match('=')
+            self.s.skip_space()
+            right = self.pipeline()
         
-        # self.s.rewindIdx = None     
+        return Tree(Tok(TokType.DEFINE, *pos), [left, right])
+
+    @_trace
+    def assign(self):
 
         left = self.pipeline()
         self.s.skip_space()
+
+        # Ignore substitution definitions
+        if self.s.is_match('=>'):
+            return left
 
         pos = self.s.pos()
         assign = None
@@ -577,40 +783,43 @@ class Lexer:
     def pipeline(self):
         left = self.expr_seq()
         self.s.skip_space()
-        pos = self.s.pos()
         tokType = None
 
-        if self.s.is_match('|<'):
-            self.s.match('|<')
-            tokType = TokType.PIPE_DIST
-        elif self.s.is_match('|>'):
-            self.s.match('|>')
-            tokType = TokType.PIPE_FUNNEL
-        elif self.s.is_match('|:'):
-            self.s.match('|:')
-            tokType = TokType.PIPE_PAIR
-        elif self.s.is_match('|@'):
-            self.s.match('|@')
-            tokType = TokType.PIPE_MAP
-        elif self.s.is_match('|?'):
-            self.s.match('|?')
-            tokType = TokType.PIPE_FILTER
-        elif self.s.is_match('|_'):
-            self.s.match('|_')
-            tokType = TokType.PIPE_REDUCE
-        elif self.s.is_match('|%'):
-            self.s.match('|%')
-            tokType = TokType.PIPE_EACH
-        elif self.s.is_match('|+'):
-            self.s.match('|+')
-            tokType = TokType.PIPE_SUM
-        else:
-            return left
+        while self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+']):
+            pos = self.s.pos()
 
-        self.s.skip_space()
-        right = self.pipeline()
+            if self.s.is_match('|<'):
+                self.s.match('|<')
+                tokType = TokType.PIPE_DIST
+            elif self.s.is_match('|>'):
+                self.s.match('|>')
+                tokType = TokType.PIPE_FUNNEL
+            elif self.s.is_match('|:'):
+                self.s.match('|:')
+                tokType = TokType.PIPE_PAIR
+            elif self.s.is_match('|@'):
+                self.s.match('|@')
+                tokType = TokType.PIPE_MAP
+            elif self.s.is_match('|?'):
+                self.s.match('|?')
+                tokType = TokType.PIPE_FILTER
+            elif self.s.is_match('|_'):
+                self.s.match('|_')
+                tokType = TokType.PIPE_REDUCE
+            elif self.s.is_match('|%'):
+                self.s.match('|%')
+                tokType = TokType.PIPE_EACH
+            elif self.s.is_match('|+'):
+                self.s.match('|+')
+                tokType = TokType.PIPE_SUM
 
-        return Tree(Tok(tokType, *pos), [left, right])
+            self.s.skip_space()
+            right = self.expr_seq()
+            self.s.skip_space()
+
+            left = Tree(Tok(tokType, *pos), [left, right])
+
+        return left
 
     @_trace
     def expr_seq(self):
@@ -635,8 +844,6 @@ class Lexer:
     @_trace
     def expr(self):
 
-        if self.s.is_match('{'):
-            return self.block()
         if self.s.is_match(':>'):
             return self.lambda_expr()
         else:
@@ -644,15 +851,15 @@ class Lexer:
 
     @_trace
     def pipe(self) -> Tree:
-        left = self.log_tern()
-        self.s.skip_space()
+        left = self.pipe_side()
         
         while not self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+']) and self.s.is_match('|'):
             self.s.match('|')
             self.s.skip_space()
+            right = self.pipe_side()
 
             pos = self.s.pos()
-            left = Tree(Tok(TokType.PIPE, *pos), [left, self.pipe()])
+            left = Tree(Tok(TokType.PIPE, *pos), [left, right])
         
         return left
 
@@ -664,13 +871,23 @@ class Lexer:
         self.s.match(':>')
         self.s.skip_space()
 
-        params = self.param_seq()
+        params = self.param_seq(False)
         self.s.skip_space()
 
         right = self.block()
         self.s.skip_space()
 
         return Tree(Tok(TokType.LAMBDA_EXPR, *pos), [params, right])
+
+    @_trace
+    def pipe_side(self):
+        left = None
+        if self.s.is_match('{'):
+            left = self.block()
+        else:
+            left = self.log_tern()
+        self.s.skip_space()
+        return left
 
     @_trace
     def log_tern(self):
@@ -873,7 +1090,7 @@ class Lexer:
         left = self.term()
         self.s.skip_space()
 
-        while not self.s.is_match('->') and self.s.is_match(['+', '-']):
+        while not self.s.is_match('->') and not self.s.is_match(['=','+=','-=','*=','/=','%=']) and self.s.is_match(['+', '-']):
             if self.s.is_match('+'):
                 self.s.match('+')
                 self.s.skip_space()
@@ -894,7 +1111,7 @@ class Lexer:
         left = self.factor()
         self.s.skip_space()
 
-        while not self.s.is_match(['*&', '*^', '*|', '*~']) and self.s.is_match(['*', '/', '%']):
+        while not self.s.is_match(['*&', '*^', '*|', '*~']) and not self.s.is_match(['*=', '/=', '%=']) and self.s.is_match(['*', '/', '%']):
             if self.s.is_match('*'):
                 self.s.match('*')
                 self.s.skip_space()
@@ -972,6 +1189,17 @@ class Lexer:
         if self.s.is_match('@'):
             self.s.match('@')
             left = Tree(Tok(TokType.SELFMEMBER, *self.s.pos()), [self.primary()])
+        elif self.s.is_match('.'):
+            self.s.match('.')
+            left = Tree(Tok(TokType.STRUCTMEMBER, *self.s.pos()), [self.id()])
+        elif self.s.is_match('$'):
+            sPos = self.s.pos()
+            self.s.match('$')
+            if self.s.is_match('$'):
+                self.s.match('$')
+                left = Tree(Tok(TokType.STREAM, *sPos))
+            else:
+                left = Tree(Tok(TokType.STREAMINDEX, *sPos), [self.lit_int()])            
         else:
             left = self.atom()
 
@@ -1026,7 +1254,7 @@ class Lexer:
     def atom(self):
         left = None
         if self.s.is_match(ALPHAS + ['_']):
-            left = self.id()
+            left = self.id()                        
         elif self.s.is_match('['):
             left = self.list_raw()
         else:
@@ -1058,7 +1286,7 @@ class Lexer:
                 
         while self.s.is_match(','):
             self.s.match(',')
-            self.s.skip_space()
+            self.s.skip_space(newline=True)
             params.append(self.param(allowDefault))
         
         if len(params) == 0:
@@ -1080,6 +1308,7 @@ class Lexer:
             self.s.skip_space()
             tComp = self.type_comp()
         
+        self.s.skip_space()
         if allowDefault and self.s.is_match('='):
             self.s.match('=')
             self.s.skip_space()
@@ -1094,6 +1323,7 @@ class Lexer:
     def type_comp(self):
 
         pos = self.s.pos()
+        inType = None
 
         if self.s.is_match('List'):
             self.s.match('List')
@@ -1164,7 +1394,7 @@ class Lexer:
                 tokType = TokType.TYPE_NULL
             case 'any':
                 tokType = TokType.TYPE_ANY
-            
+
         return Tree(Tok(tokType, line, col), [val])
     
     @_trace
@@ -1248,9 +1478,17 @@ class Lexer:
 
         if self.s.is_match('('):
             self.s.match('(')
-            left = self.begin()
+            left = None
+            if self.s.is_match('{'):
+                left = self.block()
+            else:
+                left = self.pipeline()
             self.s.match(')')
             return left
+        elif self.s.is_match('#'):
+            cPos = self.s.pos()
+            self.s.skip_comment()
+            return Tree(Tok(TokType.COMMENT, *cPos))
 
         if self.s.at_end():
             raise NotImplementedError('at end')
@@ -1263,7 +1501,8 @@ class Lexer:
         return Tree(Tok(TokType.LIT_INT, line, col), [val])
 
 
-lexer = Lexer('test.pb')
+# lexer = Lexer('test.pb')
+lexer = Lexer('test2.pb')
 
 print('-'*50)
 
