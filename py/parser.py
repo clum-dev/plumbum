@@ -1,3 +1,4 @@
+import sys
 from typing import List, Tuple
 from enum import Enum
 from pprint import pprint
@@ -193,6 +194,7 @@ class TokType(Enum):
 
     FUNC =          ['FUNC', 'func']
     STRUCT =        ['STRUCT', 'struct']
+    ENUM =          ['ENUM', 'enum']
     CONST =         ['CONST', 'const']
     IMPORT =        ['IMPORT', 'import']
 
@@ -421,12 +423,14 @@ class Parser:
 
     @_trace
     def top_level(self):
-        tl = ['func', 'struct', 'const', 'var', 'import', '#']
+        tl = ['func', 'struct', 'enum', 'const', 'var', 'import', '#']
         if self.s.is_match(tl):
             if self.s.is_match('func'):
                 return self.func_def()
             elif self.s.is_match('struct'):
                 return self.struct_def()
+            elif self.s.is_match('enum'):
+                return self.enum_def()
             elif self.s.is_match('const'):
                 return self.const_def()
             elif self.s.is_match('var'):
@@ -516,6 +520,30 @@ class Parser:
         self.s.match('}')
 
         return Tree(Tok(TokType.STRUCT, *pos), [name, *members])
+
+    @_trace
+    def enum_def(self):
+        pos = self.s.pos()
+        self.s.match('enum')
+        self.s.skip_space()
+
+        name = self.id()
+        self.s.skip_space()
+
+        members = []
+        self.s.match('{')
+        self.s.skip_space(newline=True)
+        while not self.s.is_match('}'):
+            if self.s.is_match('func'):
+                members.append(self.func_def())
+            else:
+                members.append(self.id())
+                
+            self.s.skip_space(newline=True)
+            
+        self.s.match('}')
+
+        return Tree(Tok(TokType.ENUM, *pos), [name, *members])
 
     @_trace
     def const_def(self):
@@ -1502,3 +1530,12 @@ class Parser:
         
         return Tree(Tok(TokType.LIT_INT, line, col), [val])
 
+
+def main():
+    f = sys.argv[1]
+    p = Parser(f)
+
+    p.tree.printer()
+
+if __name__ == '__main__':
+    main()
