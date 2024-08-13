@@ -185,129 +185,193 @@ class TextStream:
         raise SyntaxError(f'\n{self.name} [{self.line}:{self.col}]\tExpected token: `{cmatch}`\t(got {repr(got)})\n\n{linePrint}\n{indicator}')
 
 
+class TokAttr(Enum):
+    PIPE = 0
+    STAR = 1
+    TERM = 2
+    ASSIGN = 3
+    TERM_ASSIGN = 4
+    COMP = 5
+    TOP_LEVEL = 6
+
+
 class TokType(Enum):
-    PROGRAM =       ['PROGRAM', None]
-    EOF =           ['EOF', None]
-    LINEBREAK =     ['LINEBREAK', '\n']
-    STMT_BREAK =    ['STMT_BREAK', ';']
-    COMMENT =       ['COMMENT', '#']
+    PROGRAM =       ['PROGRAM',     None]
+    EOF =           ['EOF',         None]
+    LINEBREAK =     ['LINEBREAK',   '\n']
+    STMT_BREAK =    ['STMT_BREAK',  ';']
+    COMMENT =       ['COMMENT',     '#']
 
-    FUNC =          ['FUNC', 'func']
-    STRUCT =        ['STRUCT', 'struct']
-    ENUM =          ['ENUM', 'enum']
-    CONST =         ['CONST', 'const']
-    IMPORT =        ['IMPORT', 'import']
+    FUNC =          ['FUNC',        'func',     TokAttr.TOP_LEVEL]    
+    STRUCT =        ['STRUCT',      'struct',   TokAttr.TOP_LEVEL]
+    ENUM =          ['ENUM',        'enum',     TokAttr.TOP_LEVEL]
+    CONST =         ['CONST',       'const',    TokAttr.TOP_LEVEL]
+    IMPORT =        ['IMPORT',      'import',   TokAttr.TOP_LEVEL]
 
-    BLOCK =         ['BLOCK', None]
+    BLOCK =         ['BLOCK',       '{']
 
-    SUBST =         ['SUBST', '=>']
-    DEFINE =        ['DEFINE', 'var']
+    SUBST =         ['SUBST',       '=>']
+    DEFINE =        ['DEFINE',      'var']
 
-    ASSIGN =        ['ASSIGN', '=']
-    ASSIGN_ADD =    ['ASSIGN_ADD', '+=']
-    ASSIGN_SUB =    ['ASSIGN_SUB', '-=']
-    ASSIGN_MULT =   ['ASSIGN_MULT', '*=']
-    ASSIGN_DIV =    ['ASSIGN_DIV', '/=']
-    ASSIGN_MOD =    ['ASSIGN_MOD', '%=']
+    ASSIGN =        ['ASSIGN',      '=',        TokAttr.ASSIGN]
+    ASSIGN_ADD =    ['ASSIGN_ADD',  '+=',       TokAttr.ASSIGN]
+    ASSIGN_SUB =    ['ASSIGN_SUB',  '-=',       TokAttr.ASSIGN]
+    ASSIGN_MULT =   ['ASSIGN_MULT', '*=',       [TokAttr.ASSIGN, TokAttr.TERM_ASSIGN]]
+    ASSIGN_DIV =    ['ASSIGN_DIV',  '/=',       [TokAttr.ASSIGN, TokAttr.TERM_ASSIGN]]
+    ASSIGN_MOD =    ['ASSIGN_MOD',  '%=',       [TokAttr.ASSIGN, TokAttr.TERM_ASSIGN]]
 
-    STMT_SEQ =      ['STMT_SEQ', None]
-    WHILE_STMT =    ['WHILE_STMT', 'while']
-    FOR_STMT =      ['FOR_STMT', 'for']
-    IF_STMT =       ['IF_STMT', 'if']
-    ELSE_IF_STMT =  ['ELSE_IF_STMT', 'else if']
-    ELSE_STMT =     ['ELSE_STMT', 'else']
+    STMT_SEQ =      ['STMT_SEQ',        None]
+    WHILE_STMT =    ['WHILE_STMT',      'while']
+    FOR_STMT =      ['FOR_STMT',        'for']
+    IF_STMT =       ['IF_STMT',         'if']
+    ELSE_IF_STMT =  ['ELSE_IF_STMT',    'else if']
+    ELSE_STMT =     ['ELSE_STMT',       'else']
 
-    PIPE_DIST =     ['PIPE_DIST', '|<']
-    PIPE_FUNNEL =   ['PIPE_FUNNEL', '|>']
-    PIPE_PAIR =     ['PIPE_PAIR', '|:']
-    PIPE_MAP =      ['PIPE_MAP', '|@']
-    PIPE_FILTER =   ['PIPE_FILTER', '|?']
-    PIPE_REDUCE =   ['PIPE_REDUCE', '|_']
-    PIPE_EACH =     ['PIPE_EACH', '|%']
-    PIPE_SUM =      ['PIPE_SUM', '|+']
-    PIPE =          ['PIPE', '|']
+    PIPE_DIST =     ['PIPE_DIST',       '|<',   TokAttr.PIPE]
+    PIPE_FUNNEL =   ['PIPE_FUNNEL',     '|>',   TokAttr.PIPE]
+    PIPE_PAIR =     ['PIPE_PAIR',       '|:',   TokAttr.PIPE]
+    PIPE_MAP =      ['PIPE_MAP',        '|@',   TokAttr.PIPE]
+    PIPE_FILTER =   ['PIPE_FILTER',     '|?',   TokAttr.PIPE]
+    PIPE_REDUCE =   ['PIPE_REDUCE',     '|-',   TokAttr.PIPE]
+    PIPE_MEMBER =   ['PIPE_MEMBER',     '|.',   TokAttr.PIPE]
+    PIPE_ZIP =      ['PIPE_ZIP',        '|~',   TokAttr.PIPE]
+    PIPE_FLATTEN =  ['PIPE_FLATTEN',    '|_',   TokAttr.PIPE]
+    PIPE_ANY =      ['PIPE_ANY',        '|*',   TokAttr.PIPE]
+    PIPE_EACH =     ['PIPE_EACH',       '|%',   TokAttr.PIPE]
+    PIPE_SUM =      ['PIPE_SUM',        '|+',   TokAttr.PIPE]
+    PIPE =          ['PIPE',            '|']
 
-    EXPR_SEQ =      ['EXPR_SEQ', None]
+    EXPR_SEQ =      ['EXPR_SEQ',    None]
     LAMBDA_EXPR =   ['LAMBDA_EXPR', ':>']
 
-    LOG_TERN =      ['LOG_TERN', '?']
-    LOG_OR =        ['LOG_OR', 'or']
-    LOG_AND =       ['LOG_AND', 'and']
-    LOG_NOT =       ['LOG_NOT', 'not']
+    LOG_TERN =      ['LOG_TERN',    '?']
+    LOG_OR =        ['LOG_OR',      'or']
+    LOG_AND =       ['LOG_AND',     'and']
+    LOG_NOT =       ['LOG_NOT',     'not']
 
-    COMP_EQ =       ['COMP_EQ', '==']
-    COMP_NEQ =      ['COMP_NEQ', '!=']
-    COMP_LT =       ['COMP_LT', '<']
-    COMP_GT =       ['COMP_GT', '>']
-    COMP_LTE =      ['COMP_LTE', '<=']
-    COMP_GTE =      ['COMP_GTE', '>=']
+    COMP_EQ =       ['COMP_EQ',     '==',       TokAttr.COMP]
+    COMP_NEQ =      ['COMP_NEQ',    '!=',       TokAttr.COMP]
+    COMP_LT =       ['COMP_LT',     '<',        TokAttr.COMP]
+    COMP_GT =       ['COMP_GT',     '>',        TokAttr.COMP]
+    COMP_LTE =      ['COMP_LTE',    '<=',       TokAttr.COMP]
+    COMP_GTE =      ['COMP_GTE',    '>=',       TokAttr.COMP]
 
-    BIT_NOT =       ['BIT_NOT', '*~']
-    BIT_OR =        ['BIT_OR', '*|']
-    BIT_XOR =       ['BIT_XOR', '*^']
-    BIT_AND =       ['BIT_AND', '*&']
-    BIT_SHR =       ['BIT_SHR', '>>']
-    BIT_SHL =       ['BIT_SHL', '<<']
+    BIT_NOT =       ['BIT_NOT',     '*~',       TokAttr.STAR]
+    BIT_OR =        ['BIT_OR',      '*|',       TokAttr.STAR]
+    BIT_XOR =       ['BIT_XOR',     '*^',       TokAttr.STAR]
+    BIT_AND =       ['BIT_AND',     '*&',       TokAttr.STAR]
+    BIT_SHR =       ['BIT_SHR',     '>>']
+    BIT_SHL =       ['BIT_SHL',     '<<']
 
-    RANGE =         ['RANGE', '..']
+    RANGE =         ['RANGE',       '..']
 
-    SUM =           ['SUM', None]
-    ADD =           ['ADD', '+']
-    SUB =           ['SUB', '-']
+    SUM =           ['SUM',         None]
+    ADD =           ['ADD',         '+']
+    SUB =           ['SUB',         '-']
 
-    TERM =          ['TERM', None]
-    MULT =          ['MULT', '*']
-    DIV =           ['DIV', '/']
-    MOD =           ['MOD', '%']
+    TERM =          ['TERM',        None]
+    MULT =          ['MULT',        '*',        TokAttr.TERM]
+    DIV =           ['DIV',         '/',        TokAttr.TERM]
+    MOD =           ['MOD',         '%',        TokAttr.TERM]
     
-    FACTOR =        ['FACTOR', None]
-    POSATE =        ['POSATE', '+']
-    NEGATE =        ['NEGATE', '-']
+    FACTOR =        ['FACTOR',      None]
+    POSATE =        ['POSATE',      '+']
+    NEGATE =        ['NEGATE',      '-']
     
-    POWER =         ['POWER', '**']
+    POWER =         ['POWER',       '**']
     
-    CREMENT =       ['CREMENT', None]
-    INCREMENT =     ['INCREMENT', '++']
-    DECREMENT =     ['DECREMENT', '--']
+    CREMENT =       ['CREMENT',     None]
+    INCREMENT =     ['INCREMENT',   '++']
+    DECREMENT =     ['DECREMENT',   '--']
 
-    PRIMARY =       ['PRIMARY', None]
-    STREAM =        ['STREAM', '$$']
-    STREAMINDEX =   ['STREAMINDEX', '$']
-    STRUCTMEMBER =  ['STRUCTMEMBER', '.']
-    SELFMEMBER =    ['SELFMEMBER', '@']
-    MEMBER =        ['MEMBER', None]
-    INDEX =         ['INDEX', None]
-    CALL =          ['CALL', None]
+    PRIMARY =       ['PRIMARY',         None]
+    STREAM =        ['STREAM',          '$']
+    STREAMINDEX =   ['STREAMINDEX',     None]
+    STRUCTMEMBER =  ['STRUCTMEMBER',    '.']
+    SELFMEMBER =    ['SELFMEMBER',      '@']
+    MEMBER =        ['MEMBER',          '.']
+    INDEX =         ['INDEX',           '[']
+    CALL =          ['CALL',            '(']
 
-    ARGS =          ['ARGS', None]
-    ATOM =          ['ATOM', None]
-    LIST_RAW =      ['LIST_RAW', None]
-    PARAM_SEQ =     ['PARAM_SEQ', None]
-    PARAM =         ['PARAM', None]
-    ID =            ['ID', None]
+    ARGS =          ['ARGS',        None]
+    ATOM =          ['ATOM',        None]
+    LIST_RAW =      ['LIST_RAW',    None]
+    PARAM_SEQ =     ['PARAM_SEQ',   None]
+    PARAM =         ['PARAM',       None]
+    ID =            ['ID',          None]
 
-    TYPE_LIST =     ['TYPE_LIST', 'List']
-    TYPE_DICT =     ['TYPE_DICT', 'Dict']
+    TYPE_LIST =     ['TYPE_LIST',   'List']
+    TYPE_DICT =     ['TYPE_DICT',   'Dict']
 
-    TYPE_INT =      ['TYPE_INT', 'int']
-    TYPE_FLOAT =    ['TYPE_FLOAT', 'float']
+    TYPE_INT =      ['TYPE_INT',    'int']
+    TYPE_FLOAT =    ['TYPE_FLOAT',  'float']
     TYPE_STRING =   ['TYPE_STRING', 'String']
-    TYPE_BOOL =     ['TYPE_BOOL', 'bool']
-    TYPE_NULL =     ['TYPE_NULL', 'null']
-    TYPE_ANY =      ['TYPE_ANY', 'any']
-    TYPE_DEF =      ['TYPE_DEF', None]
+    TYPE_BOOL =     ['TYPE_BOOL',   'bool']
+    TYPE_NULL =     ['TYPE_NULL',   'null']
+    TYPE_ANY =      ['TYPE_ANY',    'any']
+    TYPE_DEF =      ['TYPE_DEF',    None]
 
-    LIT_INT =       ['LIT_INT', None]
-    LIT_FLOAT =     ['LIT_FLOAT', None]
-    LIT_STRING =    ['LIT_STRING', None]
-    LIT_TRUE =      ['LIT_TRUE', 'True']
-    LIT_FALSE =     ['LIT_FALSE', 'False']
-    ESC_CHAR =      ['ESC_CHAR', None]
-    STR_BASE =      ['STR_BASE', None]
+    LIT_INT =       ['LIT_INT',     None]
+    LIT_FLOAT =     ['LIT_FLOAT',   None]
+    LIT_STRING =    ['LIT_STRING',  None]
+    LIT_TRUE =      ['LIT_TRUE',    'True']
+    LIT_FALSE =     ['LIT_FALSE',   'False']
+    ESC_CHAR =      ['ESC_CHAR',    None]
+    STR_BASE =      ['STR_BASE',    None]
 
     def get_dict() -> dict:
         return {t.value[1] : t for t in TokType}
+    
+    def lookup(t) -> str:
+        assert isinstance(t, TokType)
+        return t.value[1]
 
+    # def pipes() -> list[str]:
+    #     out = []
+    #     out.append(TokType.PIPE_DIST.lookup())
+    #     out.append(TokType.PIPE_FUNNEL.lookup())
+    #     out.append(TokType.PIPE_PAIR.lookup())
+    #     out.append(TokType.PIPE_MAP.lookup())
+    #     out.append(TokType.PIPE_FILTER.lookup())
+    #     out.append(TokType.PIPE_REDUCE.lookup())
+    #     out.append(TokType.PIPE_MEMBER.lookup())
+    #     out.append(TokType.PIPE_ZIP.lookup())
+    #     out.append(TokType.PIPE_FLATTEN.lookup())
+    #     out.append(TokType.PIPE_ANY.lookup())
+    #     out.append(TokType.PIPE_EACH.lookup())
+    #     out.append(TokType.PIPE_SUM.lookup())
+    #     out.append(TokType.PIPE.lookup())
+    #     return out
+    
+    # def bit_stars() -> list[str]:
+    #     out = []
+    #     out.append(TokType.BIT_NOT.lookup())
+    #     out.append(TokType.BIT_OR.lookup())
+    #     out.append(TokType.BIT_XOR.lookup())
+    #     out.append(TokType.BIT_AND.lookup())
+    #     return out        
+
+    # def terms() -> list[str]:
+    #     out = []
+    #     out.append(TokType.MULT.lookup())
+    #     out.append(TokType.DIV.lookup())
+    #     out.append(TokType.MOD.lookup())
+
+    # def term_assign() -> list[str]:
+    #     out = []
+    #     out.append(TokType.ASSIGN_MULT.lookup())
+    #     out.append(TokType.ASSIGN_DIV.lookup())
+    #     out.append(TokType.ASSIGN_MOD.lookup())
+    #     return out
+
+    def has_attr(a:TokAttr):
+        # return [t.value[1] for t in TokType if len(t.value) > 2 and t.value[2] == a]
+        out = []
+        for t in TokType:
+            if len(t.value) > 2:
+                if (isinstance(t.value[2], list) and a in t.value[2]) or a == t.value[2]:
+                    out.append(t.value[1])                    
+        return out
 
 class Tok:
     t:TokType
@@ -395,7 +459,7 @@ class Parser:
         pos = self.s.pos()
 
         self.s.skip_space()
-        self.s.match('{')
+        self.s.match(TokType.BLOCK.lookup())
         self.s.skip_space(newline=True)
 
         while not self.s.is_match('}'):
@@ -423,31 +487,30 @@ class Parser:
 
     @_trace
     def top_level(self):
-        tl = ['func', 'struct', 'enum', 'const', 'var', 'import', '#']
-        if self.s.is_match(tl):
-            if self.s.is_match('func'):
+        if self.s.is_match(TokType.has_attr(TokAttr.TOP_LEVEL)):
+            if self.s.is_match(TokType.FUNC.lookup()):
                 return self.func_def()
-            elif self.s.is_match('struct'):
+            elif self.s.is_match(TokType.STRUCT.lookup()):
                 return self.struct_def()
-            elif self.s.is_match('enum'):
+            elif self.s.is_match(TokType.ENUM.lookup()):
                 return self.enum_def()
-            elif self.s.is_match('const'):
+            elif self.s.is_match(TokType.CONST.lookup()):
                 return self.const_def()
-            elif self.s.is_match('var'):
+            elif self.s.is_match(TokType.DEFINE.lookup()):
                 return self.define()
-            elif self.s.is_match('import'):
+            elif self.s.is_match(TokType.IMPORT.lookup()):
                 return self.import_def()
-            elif self.s.is_match('#'):
+            elif self.s.is_match(TokType.COMMENT.lookup()):
                 pos = self.s.pos()
                 self.s.skip_comment()
                 return Tree(Tok(TokType.COMMENT, *pos))
         else:
-            self.s.expected(tl)
+            self.s.expected(TokType.has_attr(TokAttr.TOP_LEVEL))
         
     @_trace
     def func_def(self):
         pos = self.s.pos()
-        self.s.match('func')
+        self.s.match(TokType.FUNC.lookup())
         self.s.skip_space()
 
         name = self.id()
@@ -465,16 +528,16 @@ class Parser:
                 params = self.param_seq()
                 self.s.match(')')
         
-        elif self.s.is_match(['|<', '|>', '|:']):
+        elif self.s.is_match([TokType.PIPE_DIST.lookup(), TokType.PIPE_FUNNEL.lookup(), TokType.PIPE_PAIR.lookup()]):
             pipePos = self.s.pos()
-            if self.s.is_match('|<'):
-                self.s.match('|<')
+            if self.s.is_match(TokType.PIPE_DIST.lookup()):
+                self.s.match(TokType.PIPE_DIST.lookup())
                 pipe = Tok(TokType.PIPE_DIST, *pipePos)
-            elif self.s.is_match('|>'):
-                self.s.match('|>')
+            elif self.s.is_match(TokType.PIPE_FUNNEL.lookup()):
+                self.s.match(TokType.PIPE_FUNNEL.lookup())
                 pipe = Tok(TokType.PIPE_FUNNEL, *pipePos)
-            elif self.s.is_match('|:'):
-                self.s.match('|:')
+            elif self.s.is_match(TokType.PIPE_PAIR.lookup()):
+                self.s.match(TokType.PIPE_PAIR.lookup())
                 pipe = Tok(TokType.PIPE_PAIR, *pipePos)
             
             self.s.skip_space()
@@ -495,7 +558,7 @@ class Parser:
     @_trace
     def struct_def(self):
         pos = self.s.pos()
-        self.s.match('struct')
+        self.s.match(TokType.STRUCT.lookup())
         self.s.skip_space()
 
         name = self.id()
@@ -505,16 +568,16 @@ class Parser:
         self.s.match('{')
         self.s.skip_space(newline=True)
         while not self.s.is_match('}'):
-            if self.s.is_match('var'):
+            if self.s.is_match(TokType.DEFINE.lookup()):
                 members.append(self.define())
-            elif self.s.is_match('func'):
+            elif self.s.is_match(TokType.FUNC.lookup()):
                 members.append(self.func_def())
-            elif self.s.is_match('struct'):
+            elif self.s.is_match(TokType.STRUCT.lookup()):
                 members.append(self.struct_def())
-            elif self.s.is_match('const'):
+            elif self.s.is_match(TokType.CONST.lookup()):
                 members.append(self.const_def())
             else:
-                raise SyntaxError('struct')
+                raise SyntaxError(TokType.STRUCT.lookup())
             
             self.s.skip_space(newline=True)
         self.s.match('}')
@@ -524,7 +587,7 @@ class Parser:
     @_trace
     def enum_def(self):
         pos = self.s.pos()
-        self.s.match('enum')
+        self.s.match(TokType.ENUM.lookup())
         self.s.skip_space()
 
         name = self.id()
@@ -534,7 +597,7 @@ class Parser:
         self.s.match('{')
         self.s.skip_space(newline=True)
         while not self.s.is_match('}'):
-            if self.s.is_match('func'):
+            if self.s.is_match(TokType.FUNC.lookup()):
                 members.append(self.func_def())
             else:
                 members.append(self.id())
@@ -548,7 +611,7 @@ class Parser:
     @_trace
     def const_def(self):
         pos = self.s.pos()
-        self.s.match('const')
+        self.s.match(TokType.CONST.lookup())
         self.s.skip_space()
 
         if self.s.is_match('{'):
@@ -578,7 +641,7 @@ class Parser:
     @_trace
     def import_def(self):
         pos = self.s.pos()
-        self.s.match('import')
+        self.s.match(TokType.IMPORT.lookup())
         self.s.skip_space()
 
         if self.s.is_match('{'):
@@ -605,9 +668,9 @@ class Parser:
         self.s.skip_space()
 
         right = None
-        if self.s.is_match('=>'):
+        if self.s.is_match(TokType.SUBST.lookup()):
             self.s.skip_space()
-            self.s.match('=>')
+            self.s.match(TokType.SUBST.lookup())
             self.s.skip_space()
             right = self.id()
 
@@ -621,9 +684,9 @@ class Parser:
     def subst(self):
         left = self.stmt()
         self.s.skip_space()
-        if self.s.is_match('=>'):
+        if self.s.is_match(TokType.SUBST.lookup()):
             pos = self.s.pos()
-            self.s.match('=>')
+            self.s.match(TokType.SUBST.lookup())
             self.s.skip_space()
             right = self.id()
             return Tree(Tok(TokType.SUBST, *pos), [left, right])
@@ -632,7 +695,7 @@ class Parser:
 
     @_trace
     def stmt(self):    
-        if self.s.is_match('var'):
+        if self.s.is_match(TokType.DEFINE.lookup()):
             return self.define()
 
         return self.while_stmt()
@@ -640,9 +703,9 @@ class Parser:
     @_trace
     def while_stmt(self):
 
-        if self.s.is_match('while'):
+        if self.s.is_match(TokType.WHILE_STMT.lookup()):
             whilePos = self.s.pos()
-            self.s.match('while')
+            self.s.match(TokType.WHILE_STMT.lookup())
             self.s.skip_space()
 
             cond = self.log_tern()
@@ -665,10 +728,10 @@ class Parser:
     @_trace
     def for_stmt(self):
 
-        if self.s.is_match('for'):
+        if self.s.is_match(TokType.FOR_STMT.lookup()):
             
             forPos = self.s.pos()
-            self.s.match('for')
+            self.s.match(TokType.FOR_STMT.lookup())
             self.s.skip_space()
 
             iterable = self.primary()
@@ -698,8 +761,8 @@ class Parser:
     @_trace
     def if_stmt(self):
         
-        if self.s.is_match('if'):
-            self.s.match('if')
+        if self.s.is_match(TokType.IF_STMT.lookup()):
+            self.s.match(TokType.IF_STMT.lookup())
             ifPos = self.s.pos()
             self.s.skip_space()
 
@@ -710,11 +773,11 @@ class Parser:
             self.s.skip_space()
             elseIfs = []
 
-            while self.s.is_match('else if'):
+            while self.s.is_match(TokType.ELSE_IF_STMT.lookup()):
                 elseIfs.append(self.else_if_stmt())
                 self.s.skip_space()
             
-            if self.s.is_match('else'):
+            if self.s.is_match(TokType.ELSE_STMT.lookup()):
                 elseIfs.append(self.else_stmt())
                 self.s.skip_space()
 
@@ -724,7 +787,7 @@ class Parser:
     
     @_trace
     def else_if_stmt(self):
-        self.s.match('else if')
+        self.s.match(TokType.ELSE_IF_STMT.lookup())
         self.s.skip_space()
         pos = self.s.pos()
         cond = self.log_tern()
@@ -734,7 +797,7 @@ class Parser:
     
     @_trace
     def else_stmt(self):
-        self.s.match('else')
+        self.s.match(TokType.ELSE_STMT.lookup())
         self.s.skip_space()
         elsePos = self.s.pos()
         elseBlock = self.block()
@@ -744,7 +807,7 @@ class Parser:
     @_trace
     def define(self):
         pos = self.s.pos()
-        self.s.match('var')
+        self.s.match(TokType.DEFINE.lookup())
         self.s.skip_space()
 
         if self.s.is_match('{'):
@@ -778,28 +841,28 @@ class Parser:
         self.s.skip_space()
 
         # Ignore substitution definitions
-        if self.s.is_match('=>'):
+        if self.s.is_match(TokType.SUBST.lookup()):
             return left
 
         pos = self.s.pos()
         assign = None
-        if self.s.is_match('='):
-            self.s.match('=')
+        if self.s.is_match(TokType.ASSIGN.lookup()):
+            self.s.match(TokType.ASSIGN.lookup())
             assign = TokType.ASSIGN
-        elif self.s.is_match('+='):
-            self.s.match('+=')
+        elif self.s.is_match(TokType.ASSIGN_ADD.lookup()):
+            self.s.match(TokType.ASSIGN_ADD.lookup())
             assign = TokType.ASSIGN_ADD
-        elif self.s.is_match('-='):
-            self.s.match('-=')
+        elif self.s.is_match(TokType.ASSIGN_SUB.lookup()):
+            self.s.match(TokType.ASSIGN_SUB.lookup())
             assign = TokType.ASSIGN_SUB
-        elif self.s.is_match('*='):
-            self.s.match('*=')
+        elif self.s.is_match(TokType.ASSIGN_MULT.lookup()):
+            self.s.match(TokType.ASSIGN_MULT.lookup())
             assign = TokType.ASSIGN_MULT
-        elif self.s.is_match('/='):
-            self.s.match('/=')
+        elif self.s.is_match(TokType.ASSIGN_DIV.lookup()):
+            self.s.match(TokType.ASSIGN_DIV.lookup())
             assign = TokType.ASSIGN_DIV
-        elif self.s.is_match('%='):
-            self.s.match('%=')
+        elif self.s.is_match(TokType.ASSIGN_MOD.lookup()):
+            self.s.match(TokType.ASSIGN_MOD.lookup())
             assign = TokType.ASSIGN_MOD
         else:
             return left
@@ -817,32 +880,44 @@ class Parser:
         self.s.skip_space()
         tokType = None
 
-        while self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+']):
+        while self.s.is_match(TokType.has_attr(TokAttr.PIPE)):
             pos = self.s.pos()
 
-            if self.s.is_match('|<'):
-                self.s.match('|<')
+            if self.s.is_match(TokType.PIPE_DIST.lookup()):
+                self.s.match(TokType.PIPE_DIST.lookup())
                 tokType = TokType.PIPE_DIST
-            elif self.s.is_match('|>'):
-                self.s.match('|>')
+            elif self.s.is_match(TokType.PIPE_FUNNEL.lookup()):
+                self.s.match(TokType.PIPE_FUNNEL.lookup())
                 tokType = TokType.PIPE_FUNNEL
-            elif self.s.is_match('|:'):
-                self.s.match('|:')
+            elif self.s.is_match(TokType.PIPE_PAIR.lookup()):
+                self.s.match(TokType.PIPE_PAIR.lookup())
                 tokType = TokType.PIPE_PAIR
-            elif self.s.is_match('|@'):
-                self.s.match('|@')
+            elif self.s.is_match(TokType.PIPE_MAP.lookup()):
+                self.s.match(TokType.PIPE_MAP.lookup())
                 tokType = TokType.PIPE_MAP
-            elif self.s.is_match('|?'):
-                self.s.match('|?')
+            elif self.s.is_match(TokType.PIPE_FILTER.lookup()):
+                self.s.match(TokType.PIPE_FILTER.lookup())
                 tokType = TokType.PIPE_FILTER
-            elif self.s.is_match('|_'):
-                self.s.match('|_')
+            elif self.s.is_match(TokType.PIPE_REDUCE.lookup()):
+                self.s.match(TokType.PIPE_REDUCE.lookup())
                 tokType = TokType.PIPE_REDUCE
-            elif self.s.is_match('|%'):
-                self.s.match('|%')
+            elif self.s.is_match(TokType.PIPE_MEMBER.lookup()):
+                self.s.match(TokType.PIPE_MEMBER.lookup())
+                tokType = TokType.PIPE_MEMBER
+            elif self.s.is_match(TokType.PIPE_ZIP.lookup()):
+                self.s.match(TokType.PIPE_ZIP.lookup())
+                tokType = TokType.PIPE_ZIP
+            elif self.s.is_match(TokType.PIPE_FLATTEN.lookup()):
+                self.s.match(TokType.PIPE_FLATTEN.lookup())
+                tokType = TokType.PIPE_FLATTEN
+            elif self.s.is_match(TokType.PIPE_ANY.lookup()):
+                self.s.match(TokType.PIPE_ANY.lookup())
+                tokType = TokType.PIPE_ANY
+            elif self.s.is_match(TokType.PIPE_EACH.lookup()):
+                self.s.match(TokType.PIPE_EACH.lookup())
                 tokType = TokType.PIPE_EACH
-            elif self.s.is_match('|+'):
-                self.s.match('|+')
+            elif self.s.is_match(TokType.PIPE_SUM.lookup()):
+                self.s.match(TokType.PIPE_SUM.lookup())
                 tokType = TokType.PIPE_SUM
 
             self.s.skip_space()
@@ -875,8 +950,7 @@ class Parser:
 
     @_trace
     def expr(self):
-
-        if self.s.is_match(':>'):
+        if self.s.is_match(TokType.LAMBDA_EXPR.lookup()):
             return self.lambda_expr()
         else:
             return self.pipe()
@@ -885,8 +959,9 @@ class Parser:
     def pipe(self) -> Tree:
         left = self.pipe_side()
         
-        while not self.s.is_match(['|<', '|>', '|:', '|@', '|?', '|_', '|%', '|+']) and self.s.is_match('|'):
-            self.s.match('|')
+        while not self.s.is_match(TokType.has_attr(TokAttr.PIPE)) \
+                and self.s.is_match(TokType.PIPE.lookup()):
+            self.s.match(TokType.PIPE.lookup())
             self.s.skip_space()
             right = self.pipe_side()
 
@@ -900,7 +975,7 @@ class Parser:
         
         pos = self.s.pos()
 
-        self.s.match(':>')
+        self.s.match(TokType.LAMBDA_EXPR.lookup())
         self.s.skip_space()
 
         params = self.param_seq(False)
@@ -926,8 +1001,8 @@ class Parser:
         left = self.log_or()
         self.s.skip_space()
 
-        if self.s.is_match('?'):
-            self.s.match('?')
+        if self.s.is_match(TokType.LOG_TERN.lookup()):
+            self.s.match(TokType.LOG_TERN.lookup())
             self.s.skip_space()
             
             pos = self.s.pos()
@@ -949,8 +1024,8 @@ class Parser:
         left = self.log_and()
         self.s.skip_space()
 
-        while self.s.is_match('or'):
-            self.s.match('or')
+        while self.s.is_match(TokType.LOG_OR.lookup()):
+            self.s.match(TokType.LOG_OR.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_OR, *pos), [left, self.log_and()])
@@ -962,8 +1037,8 @@ class Parser:
         left = self.log_not()
         self.s.skip_space()
 
-        while self.s.is_match('and'):
-            self.s.match('and')
+        while self.s.is_match(TokType.LOG_AND.lookup()):
+            self.s.match(TokType.LOG_AND.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_AND, *pos), [left, self.log_not()])
@@ -974,8 +1049,8 @@ class Parser:
     def log_not(self):
         
         left = None
-        while self.s.is_match('not'):
-            self.s.match('not')
+        while self.s.is_match(TokType.LOG_NOT.lookup()):
+            self.s.match(TokType.LOG_NOT.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.LOG_NOT, *pos), [self.log_not()])
@@ -994,34 +1069,34 @@ class Parser:
         self.s.skip_space()
         pos = self.s.pos()
 
-        while self.s.is_match(['==', '!=', '<', '>', '<=', '>=']):
-            if self.s.is_match('=='):
-                self.s.match('==')
+        while self.s.is_match(TokType.has_attr(TokAttr.COMP)):
+            if self.s.is_match(TokType.COMP_EQ.lookup()):
+                self.s.match(TokType.COMP_EQ.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_EQ, *pos), [left, self.b_not()])
 
-            elif self.s.is_match('!='):
-                self.s.match('!=')
+            elif self.s.is_match(TokType.COMP_NEQ.lookup()):
+                self.s.match(TokType.COMP_NEQ.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_NEQ, *pos), [left, self.b_not()])
 
-            elif self.s.is_match('<'):
-                self.s.match('<')
+            elif self.s.is_match(TokType.COMP_LT.lookup()):
+                self.s.match(TokType.COMP_LT.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_LT, *pos), [left, self.b_not()])
 
-            elif self.s.is_match('>'):
-                self.s.match('>')
+            elif self.s.is_match(TokType.COMP_GT.lookup()):
+                self.s.match(TokType.COMP_GT.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_GT, *pos), [left, self.b_not()])
 
-            elif self.s.is_match('<='):
-                self.s.match('<=')
+            elif self.s.is_match(TokType.COMP_LTE.lookup()):
+                self.s.match(TokType.COMP_LTE.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_LTE, *pos), [left, self.b_not()])
 
-            elif self.s.is_match('>='):
-                self.s.match('>=')
+            elif self.s.is_match(TokType.COMP_GTE.lookup()):
+                self.s.match(TokType.COMP_GTE.lookup())
                 self.s.skip_space()
                 left = Tree(Tok(TokType.COMP_GTE, *pos), [left, self.b_not()])
 
@@ -1032,8 +1107,8 @@ class Parser:
     def b_not(self):
         
         left = None
-        while self.s.is_match('*~'):
-            self.s.match('*~')
+        while self.s.is_match(TokType.BIT_NOT.lookup()):
+            self.s.match(TokType.BIT_NOT.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_NOT, *pos), [self.b_not()])
@@ -1049,8 +1124,8 @@ class Parser:
         left = self.b_xor()
         self.s.skip_space()
 
-        while self.s.is_match('*|'):
-            self.s.match('*|')
+        while self.s.is_match(TokType.BIT_OR.lookup()):
+            self.s.match(TokType.BIT_OR.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_OR, *pos), [left, self.b_xor()])
@@ -1062,8 +1137,8 @@ class Parser:
         left = self.b_and()
         self.s.skip_space()
 
-        while self.s.is_match('*^'):
-            self.s.match('*^')
+        while self.s.is_match(TokType.BIT_XOR.lookup()):
+            self.s.match(TokType.BIT_XOR.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_XOR, *pos), [left, self.b_and()])
@@ -1075,8 +1150,8 @@ class Parser:
         left = self.b_shift()
         self.s.skip_space()
 
-        while self.s.is_match('*&'):
-            self.s.match('*&')
+        while self.s.is_match(TokType.BIT_AND.lookup()):
+            self.s.match(TokType.BIT_AND.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_AND, *pos), [left, self.b_shift()])
@@ -1089,14 +1164,14 @@ class Parser:
         left = self.data_range()
         self.s.skip_space()
 
-        if self.s.is_match('<<'):
-            self.s.match('<<')
+        if self.s.is_match(TokType.BIT_SHL.lookup()):
+            self.s.match(TokType.BIT_SHL.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_SHL, *pos), [left, self.b_shift()])
     
-        elif self.s.is_match('>>'):
-            self.s.match('>>')
+        elif self.s.is_match(TokType.BIT_SHR.lookup()):
+            self.s.match(TokType.BIT_SHR.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.BIT_SHR, *pos), [left, self.b_shift()])
@@ -1107,8 +1182,8 @@ class Parser:
     def data_range(self):
         left = self.sum()
         self.s.skip_space()
-        if self.s.is_match('..'):
-            self.s.match('..')
+        if self.s.is_match(TokType.RANGE.lookup()):
+            self.s.match(TokType.RANGE.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.RANGE, *pos), [left, self.sum()])
@@ -1122,15 +1197,18 @@ class Parser:
         left = self.term()
         self.s.skip_space()
 
-        while not self.s.is_match('->') and not self.s.is_match(['=','+=','-=','*=','/=','%=']) and self.s.is_match(['+', '-']):
-            if self.s.is_match('+'):
-                self.s.match('+')
+        while not self.s.is_match('->') \
+                and not self.s.is_match(TokType.has_attr(TokAttr.ASSIGN)) \
+                and self.s.is_match([TokType.ADD.lookup(), TokType.SUB.lookup()]):
+
+            if self.s.is_match(TokType.ADD.lookup()):
+                self.s.match(TokType.ADD.lookup())
                 self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.ADD, *pos), [left, self.term()])
 
-            elif self.s.is_match('-'):
-                self.s.match('-')
+            elif self.s.is_match(TokType.SUB.lookup()):
+                self.s.match(TokType.SUB.lookup())
                 self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.SUB, *pos), [left, self.term()])
@@ -1143,21 +1221,24 @@ class Parser:
         left = self.factor()
         self.s.skip_space()
 
-        while not self.s.is_match(['*&', '*^', '*|', '*~']) and not self.s.is_match(['*=', '/=', '%=']) and self.s.is_match(['*', '/', '%']):
-            if self.s.is_match('*'):
-                self.s.match('*')
+        while not self.s.is_match(TokType.has_attr(TokAttr.STAR)) \
+                and not self.s.is_match(TokType.has_attr(TokAttr.TERM_ASSIGN)) \
+                and self.s.is_match(TokType.has_attr(TokAttr.TERM)):
+            
+            if self.s.is_match(TokType.MULT.lookup()):
+                self.s.match(TokType.MULT.lookup())
                 self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.MULT, *pos), [left, self.factor()])
             
-            elif self.s.is_match('/'):
-                self.s.match('/')
+            elif self.s.is_match(TokType.DIV.lookup()):
+                self.s.match(TokType.DIV.lookup())
                 self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.DIV, *pos), [left, self.factor()])
             
-            elif self.s.is_match('%'):
-                self.s.match('%')
+            elif self.s.is_match(TokType.MOD.lookup()):
+                self.s.match(TokType.MOD.lookup())
                 self.s.skip_space()
                 pos = self.s.pos()
                 left = Tree(Tok(TokType.MOD, *pos), [left, self.factor()])
@@ -1169,14 +1250,14 @@ class Parser:
 
         left = None
 
-        if not self.s.is_match('++') and self.s.is_match('+'):
-            self.s.match('+')
+        if not self.s.is_match(TokType.INCREMENT.lookup()) and self.s.is_match(TokType.POSATE.lookup()):
+            self.s.match(TokType.POSATE.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.POSATE, *pos), [self.power()])
 
-        elif not self.s.is_match('--') and self.s.is_match('-'):
-            self.s.match('-')
+        elif not self.s.is_match(TokType.DECREMENT.lookup()) and self.s.is_match(TokType.NEGATE.lookup()):
+            self.s.match(TokType.NEGATE.lookup())
             self.s.skip_space()
             pos = self.s.pos()
             left = Tree(Tok(TokType.NEGATE, *pos), [self.power()])
@@ -1190,8 +1271,8 @@ class Parser:
     def power(self):
 
         left = self.crement()
-        if self.s.is_match('**'):
-            self.s.match('**')
+        if self.s.is_match(TokType.POWER.lookup()):
+            self.s.match(TokType.POWER.lookup())
             self.s.skip_space()
             pPos = self.s.pos()
             right = self.factor()
@@ -1202,14 +1283,13 @@ class Parser:
     @_trace
     def crement(self):
 
-        pos = self.s.pos()
         left = self.primary()
 
-        if self.s.is_match('++'):
-            self.s.match('++')
+        if self.s.is_match(TokType.INCREMENT.lookup()):
+            self.s.match(TokType.INCREMENT.lookup())
             left = Tree(Tok(TokType.INCREMENT, *self.s.pos()), [left])
-        elif self.s.is_match('--'):
-            self.s.match('--')
+        elif self.s.is_match(TokType.DECREMENT.lookup()):
+            self.s.match(TokType.DECREMENT.lookup())
             left = Tree(Tok(TokType.DECREMENT, *self.s.pos()), [left])
         
         return left
@@ -1218,17 +1298,17 @@ class Parser:
     def primary(self):
 
         left = None
-        if self.s.is_match('@'):
-            self.s.match('@')
+        if self.s.is_match(TokType.SELFMEMBER.lookup()):     # @mem
+            self.s.match(TokType.SELFMEMBER.lookup())
             left = Tree(Tok(TokType.SELFMEMBER, *self.s.pos()), [self.primary()])
-        elif self.s.is_match('.'):
-            self.s.match('.')
+        elif self.s.is_match(TokType.STRUCTMEMBER.lookup()): # .mem
+            self.s.match(TokType.STRUCTMEMBER.lookup())
             left = Tree(Tok(TokType.STRUCTMEMBER, *self.s.pos()), [self.id()])
-        elif self.s.is_match('$'):
+        elif self.s.is_match(TokType.STREAM.lookup()):       # $$ or $...
             sPos = self.s.pos()
-            self.s.match('$')
-            if self.s.is_match('$'):
-                self.s.match('$')
+            self.s.match(TokType.STREAM.lookup())
+            if self.s.is_match(TokType.STREAM.lookup()):
+                self.s.match(TokType.STREAM.lookup())
                 left = Tree(Tok(TokType.STREAM, *sPos))
             else:
                 left = Tree(Tok(TokType.STREAMINDEX, *sPos), [self.lit_int()])            
@@ -1236,14 +1316,14 @@ class Parser:
             left = self.atom()
 
         self.s.skip_space()
-        if self.s.is_match('('):
+        if self.s.is_match(TokType.CALL.lookup()):          # call()
             cPos = self.s.pos()
             self.s.skip_space()
-            self.s.match('(')
+            self.s.match(TokType.CALL.lookup())
             self.s.skip_space()
 
             args = None
-            if self.s.is_match(')'):
+            if self.s.is_match(')'):                        # No args call
                 self.s.skip_space()
                 self.s.match(')')
             else:
@@ -1253,18 +1333,19 @@ class Parser:
             left = Tree(Tok(TokType.CALL, *cPos), [left, args])
 
         self.s.skip_space()
-        while not self.s.is_match('..') and self.s.is_match(['.', '[']):
+        while not self.s.is_match(TokType.RANGE.lookup()) \
+                and self.s.is_match([TokType.MEMBER.lookup(), TokType.INDEX.lookup()]):
             self.s.skip_space()
-            if self.s.is_match('.'):
+            if self.s.is_match(TokType.MEMBER.lookup()):    # .mem
                 self.s.skip_space()
                 mPos = self.s.pos()
-                self.s.match('.')
+                self.s.match(TokType.MEMBER.lookup())
                 self.s.skip_space()
 
                 member = self.primary()
                 left = Tree(Tok(TokType.MEMBER, *mPos), [left, member])
             
-            elif self.s.is_match('['):
+            elif self.s.is_match('['):                      # index[]
                 cPos = self.s.pos()
                 self.s.skip_space()
                 self.s.match('[')
@@ -1357,16 +1438,16 @@ class Parser:
         pos = self.s.pos()
         inType = None
 
-        if self.s.is_match('List'):
-            self.s.match('List')
+        if self.s.is_match(TokType.TYPE_LIST.lookup()):
+            self.s.match(TokType.TYPE_LIST.lookup())
             if self.s.is_match('<'):
                 self.s.match('<')
                 inType = self.type_comp()
                 self.s.match('>')
             return Tree(Tok(TokType.TYPE_LIST, *pos), [inType])
 
-        elif self.s.is_match('Dict'):
-            self.s.match('Dict')
+        elif self.s.is_match(TokType.TYPE_DICT.lookup()):
+            self.s.match(TokType.TYPE_DICT.lookup())
             if self.s.is_match('<'):
                 self.s.match('<')
                 inType = self.type_comp()
@@ -1382,21 +1463,21 @@ class Parser:
         pos = self.s.pos()
         name = self.id()
         
-        match name.leaves[0]:
-            case 'int':
-                return Tree(Tok(TokType.TYPE_INT, *pos), [])
-            case 'float':
-                return Tree(Tok(TokType.TYPE_FLOAT, *pos), [])
-            case 'String':
-                return Tree(Tok(TokType.TYPE_STRING, *pos), [])
-            case 'bool':
-                return Tree(Tok(TokType.TYPE_BOOL, *pos), [])
-            case 'null':
-                return Tree(Tok(TokType.TYPE_NULL, *pos), [])
-            case 'any':
-                return Tree(Tok(TokType.TYPE_ANY, *pos), [])
-            case _:
-                return Tree(Tok(TokType.TYPE_DEF, *pos), [name])
+        if name.leaves[0] == TokType.TYPE_INT.lookup():
+            return Tree(Tok(TokType.TYPE_INT, *pos), [])
+        elif name.leaves[0] == TokType.TYPE_FLOAT.lookup():
+            return Tree(Tok(TokType.TYPE_FLOAT, *pos), [])
+        elif name.leaves[0] == TokType.TYPE_STRING.lookup():
+            return Tree(Tok(TokType.TYPE_STRING, *pos), [])
+        elif name.leaves[0] == TokType.TYPE_BOOL.lookup():
+            return Tree(Tok(TokType.TYPE_BOOL, *pos), [])
+        elif name.leaves[0] == TokType.TYPE_NULL.lookup():
+            return Tree(Tok(TokType.TYPE_NULL, *pos), [])
+        elif name.leaves[0] == TokType.TYPE_ANY.lookup():
+            return Tree(Tok(TokType.TYPE_ANY, *pos), [])
+        
+        else:
+            return Tree(Tok(TokType.TYPE_DEF, *pos), [name])
         
     @_trace
     def id(self):
@@ -1406,26 +1487,27 @@ class Parser:
         val += self.s.match(ALPHAS + ['_'])
         while self.s.is_match(ALPHAS + DIGITS + ['_']):
             val += self.s.match(ALPHAS + DIGITS + ['_'])
-                
+        
         tokType = TokType.ID
-        match val:
-            case 'True':
-                tokType = TokType.LIT_TRUE
-            case 'False':
-                tokType = TokType.LIT_FALSE
+        
+        # TODO make this not terrible (use toktype dict lookup)
+        if val == TokType.LIT_TRUE.lookup():
+            tokType = TokType.LIT_TRUE
+        elif val == TokType.LIT_FALSE.lookup():
+            tokType = TokType.LIT_FALSE
 
-            case 'int':
-                tokType = TokType.TYPE_INT
-            case 'float':
-                tokType = TokType.TYPE_FLOAT
-            case 'String':
-                tokType = TokType.TYPE_STRING
-            case 'bool':
-                tokType = TokType.TYPE_BOOL
-            case 'null':
-                tokType = TokType.TYPE_NULL
-            case 'any':
-                tokType = TokType.TYPE_ANY
+        elif val == TokType.TYPE_INT.lookup():
+            tokType = TokType.TYPE_INT
+        elif val == TokType.TYPE_FLOAT.lookup():
+            tokType = TokType.TYPE_FLOAT
+        elif val == TokType.TYPE_STRING.lookup():
+            tokType = TokType.TYPE_STRING
+        elif val == TokType.TYPE_BOOL.lookup():
+            tokType = TokType.TYPE_BOOL
+        elif val == TokType.TYPE_NULL.lookup():
+            tokType = TokType.TYPE_NULL
+        elif val == TokType.TYPE_ANY.lookup():
+            tokType = TokType.TYPE_ANY
 
         return Tree(Tok(tokType, line, col), [val])
     
@@ -1488,7 +1570,7 @@ class Parser:
         left = self.lit_int()
 
         # Ignore ranges
-        if self.s.is_match('..'):
+        if self.s.is_match(TokType.RANGE.lookup()):
             return left
 
         # Float
@@ -1515,7 +1597,7 @@ class Parser:
                 left = self.pipeline()
             self.s.match(')')
             return left
-        elif self.s.is_match('#'):
+        elif self.s.is_match(TokType.COMMENT.lookup()):
             cPos = self.s.pos()
             self.s.skip_comment()
             return Tree(Tok(TokType.COMMENT, *cPos))
@@ -1532,10 +1614,10 @@ class Parser:
 
 
 def main():
-    f = sys.argv[1]
-    p = Parser(f)
-
-    p.tree.printer()
+    if len(sys.argv) > 1:
+        f = sys.argv[1]
+        p = Parser(f)
+        p.tree.printer()
 
 if __name__ == '__main__':
     main()
