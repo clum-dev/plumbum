@@ -1,3 +1,4 @@
-func main {
-    1 + 2
+func main |> args -> str{
+    # TODO fix this ordering (join)
+    args |@ str |> out |. join | return
 }
