@@ -193,6 +193,8 @@ class TokAttr(Enum):
     TERM_ASSIGN = 4
     COMP = 5
     TOP_LEVEL = 6
+    LITERAL = 7
+    TYPE = 8
 
 
 class TokType(Enum):
@@ -300,24 +302,24 @@ class TokType(Enum):
     PARAM =         ['PARAM',       None]
     ID =            ['ID',          None]
 
-    TYPE_LIST =     ['TYPE_LIST',   'List']
-    TYPE_DICT =     ['TYPE_DICT',   'Dict']
+    TYPE_LIST =     ['TYPE_LIST',   'List',     TokAttr.TYPE]
+    TYPE_DICT =     ['TYPE_DICT',   'Dict',     TokAttr.TYPE]
 
-    TYPE_INT =      ['TYPE_INT',    'int']
-    TYPE_FLOAT =    ['TYPE_FLOAT',  'float']
-    TYPE_STRING =   ['TYPE_STRING', 'String']
-    TYPE_BOOL =     ['TYPE_BOOL',   'bool']
-    TYPE_NULL =     ['TYPE_NULL',   'null']
-    TYPE_ANY =      ['TYPE_ANY',    'any']
-    TYPE_DEF =      ['TYPE_DEF',    None]
+    TYPE_INT =      ['TYPE_INT',    'int',      TokAttr.TYPE]
+    TYPE_FLOAT =    ['TYPE_FLOAT',  'float',    TokAttr.TYPE]
+    TYPE_STRING =   ['TYPE_STRING', 'String',   TokAttr.TYPE]
+    TYPE_BOOL =     ['TYPE_BOOL',   'bool',     TokAttr.TYPE]
+    TYPE_NULL =     ['TYPE_NULL',   'null',     TokAttr.TYPE]
+    TYPE_ANY =      ['TYPE_ANY',    'any',      TokAttr.TYPE]
+    TYPE_DEF =      ['TYPE_DEF',    None,       TokAttr.TYPE]
 
-    LIT_INT =       ['LIT_INT',     None]
-    LIT_FLOAT =     ['LIT_FLOAT',   None]
-    LIT_STRING =    ['LIT_STRING',  None]
-    LIT_TRUE =      ['LIT_TRUE',    'True']
-    LIT_FALSE =     ['LIT_FALSE',   'False']
-    ESC_CHAR =      ['ESC_CHAR',    None]
-    STR_BASE =      ['STR_BASE',    None]
+    LIT_INT =       ['LIT_INT',     None,       TokAttr.LITERAL]  
+    LIT_FLOAT =     ['LIT_FLOAT',   None,       TokAttr.LITERAL]
+    LIT_STRING =    ['LIT_STRING',  None,       TokAttr.LITERAL]
+    LIT_TRUE =      ['LIT_TRUE',    'True',     TokAttr.LITERAL]
+    LIT_FALSE =     ['LIT_FALSE',   'False',    TokAttr.LITERAL]
+    ESC_CHAR =      ['ESC_CHAR',    None,       TokAttr.LITERAL]
+    STR_BASE =      ['STR_BASE',    None,       TokAttr.LITERAL]
 
     def get_dict() -> dict:
         return {t.value[1] : t for t in TokType}
@@ -326,45 +328,11 @@ class TokType(Enum):
         assert isinstance(t, TokType)
         return t.value[1]
 
-    # def pipes() -> list[str]:
-    #     out = []
-    #     out.append(TokType.PIPE_DIST.lookup())
-    #     out.append(TokType.PIPE_FUNNEL.lookup())
-    #     out.append(TokType.PIPE_PAIR.lookup())
-    #     out.append(TokType.PIPE_MAP.lookup())
-    #     out.append(TokType.PIPE_FILTER.lookup())
-    #     out.append(TokType.PIPE_REDUCE.lookup())
-    #     out.append(TokType.PIPE_MEMBER.lookup())
-    #     out.append(TokType.PIPE_ZIP.lookup())
-    #     out.append(TokType.PIPE_FLATTEN.lookup())
-    #     out.append(TokType.PIPE_ANY.lookup())
-    #     out.append(TokType.PIPE_EACH.lookup())
-    #     out.append(TokType.PIPE_SUM.lookup())
-    #     out.append(TokType.PIPE.lookup())
-    #     return out
-    
-    # def bit_stars() -> list[str]:
-    #     out = []
-    #     out.append(TokType.BIT_NOT.lookup())
-    #     out.append(TokType.BIT_OR.lookup())
-    #     out.append(TokType.BIT_XOR.lookup())
-    #     out.append(TokType.BIT_AND.lookup())
-    #     return out        
+    def raw(t) -> str:
+        assert isinstance(t, TokType)
+        return t.value[2]
 
-    # def terms() -> list[str]:
-    #     out = []
-    #     out.append(TokType.MULT.lookup())
-    #     out.append(TokType.DIV.lookup())
-    #     out.append(TokType.MOD.lookup())
-
-    # def term_assign() -> list[str]:
-    #     out = []
-    #     out.append(TokType.ASSIGN_MULT.lookup())
-    #     out.append(TokType.ASSIGN_DIV.lookup())
-    #     out.append(TokType.ASSIGN_MOD.lookup())
-    #     return out
-
-    def has_attr(a:TokAttr):
+    def with_attr(a:TokAttr) -> list:
         # return [t.value[1] for t in TokType if len(t.value) > 2 and t.value[2] == a]
         out = []
         for t in TokType:
@@ -372,6 +340,14 @@ class TokType(Enum):
                 if (isinstance(t.value[2], list) and a in t.value[2]) or a == t.value[2]:
                     out.append(t.value[1])                    
         return out
+
+    def has_attr(self, a:TokAttr) -> bool:
+        if len(self.value) < 3:
+            return False
+        if isinstance(self.value[2], list):
+            return a in self.value[2]
+        return a == self.value[2]
+
 
 class Tok:
     t:TokType
@@ -487,7 +463,7 @@ class Parser:
 
     @_trace
     def top_level(self):
-        if self.s.is_match(TokType.has_attr(TokAttr.TOP_LEVEL)):
+        if self.s.is_match(TokType.with_attr(TokAttr.TOP_LEVEL)):
             if self.s.is_match(TokType.FUNC.lookup()):
                 return self.func_def()
             elif self.s.is_match(TokType.STRUCT.lookup()):
@@ -505,7 +481,7 @@ class Parser:
                 self.s.skip_comment()
                 return Tree(Tok(TokType.COMMENT, *pos))
         else:
-            self.s.expected(TokType.has_attr(TokAttr.TOP_LEVEL))
+            self.s.expected(TokType.with_attr(TokAttr.TOP_LEVEL))
         
     @_trace
     def func_def(self):
@@ -542,7 +518,26 @@ class Parser:
             
             self.s.skip_space()
             params = self.param_seq()
+            anyType = Tree(Tok(TokType.TYPE_ANY, params.tok.line, params.tok.col), [])
 
+            # Convert everything to a param seq (of params)
+            if params.tok.t in [TokType.PARAM, TokType.ID]:
+                if params.tok.t == TokType.ID:
+                    params = Tree(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.line), 
+                                  [Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [params, anyType, None])])
+                elif params.tok.t == TokType.PARAM:
+                    params = Tree(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.line), [params])
+
+            elif params.tok.t == TokType.PARAM_SEQ:
+                newLeaves = []
+                for p in params.leaves:
+                    if p.tok.t == TokType.ID:
+                        newLeaves.append(Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [p, anyType, None]))
+                    else:
+                        newLeaves.append(p)
+
+                params.leaves = newLeaves
+                    
         self.s.skip_space()
         retType = None
         if self.s.is_match('->'):
@@ -880,7 +875,7 @@ class Parser:
         self.s.skip_space()
         tokType = None
 
-        while self.s.is_match(TokType.has_attr(TokAttr.PIPE)):
+        while self.s.is_match(TokType.with_attr(TokAttr.PIPE)):
             pos = self.s.pos()
 
             if self.s.is_match(TokType.PIPE_DIST.lookup()):
@@ -959,7 +954,7 @@ class Parser:
     def pipe(self) -> Tree:
         left = self.pipe_side()
         
-        while not self.s.is_match(TokType.has_attr(TokAttr.PIPE)) \
+        while not self.s.is_match(TokType.with_attr(TokAttr.PIPE)) \
                 and self.s.is_match(TokType.PIPE.lookup()):
             self.s.match(TokType.PIPE.lookup())
             self.s.skip_space()
@@ -1069,7 +1064,7 @@ class Parser:
         self.s.skip_space()
         pos = self.s.pos()
 
-        while self.s.is_match(TokType.has_attr(TokAttr.COMP)):
+        while self.s.is_match(TokType.with_attr(TokAttr.COMP)):
             if self.s.is_match(TokType.COMP_EQ.lookup()):
                 self.s.match(TokType.COMP_EQ.lookup())
                 self.s.skip_space()
@@ -1198,7 +1193,7 @@ class Parser:
         self.s.skip_space()
 
         while not self.s.is_match('->') \
-                and not self.s.is_match(TokType.has_attr(TokAttr.ASSIGN)) \
+                and not self.s.is_match(TokType.with_attr(TokAttr.ASSIGN)) \
                 and self.s.is_match([TokType.ADD.lookup(), TokType.SUB.lookup()]):
 
             if self.s.is_match(TokType.ADD.lookup()):
@@ -1221,9 +1216,9 @@ class Parser:
         left = self.factor()
         self.s.skip_space()
 
-        while not self.s.is_match(TokType.has_attr(TokAttr.STAR)) \
-                and not self.s.is_match(TokType.has_attr(TokAttr.TERM_ASSIGN)) \
-                and self.s.is_match(TokType.has_attr(TokAttr.TERM)):
+        while not self.s.is_match(TokType.with_attr(TokAttr.STAR)) \
+                and not self.s.is_match(TokType.with_attr(TokAttr.TERM_ASSIGN)) \
+                and self.s.is_match(TokType.with_attr(TokAttr.TERM)):
             
             if self.s.is_match(TokType.MULT.lookup()):
                 self.s.match(TokType.MULT.lookup())
@@ -1463,6 +1458,7 @@ class Parser:
         pos = self.s.pos()
         name = self.id()
         
+        # TODO make this not terrible (use lookup)
         if name.leaves[0] == TokType.TYPE_INT.lookup():
             return Tree(Tok(TokType.TYPE_INT, *pos), [])
         elif name.leaves[0] == TokType.TYPE_FLOAT.lookup():
@@ -1606,7 +1602,11 @@ class Parser:
             raise NotImplementedError('at end')
             return
 
-        val += self.s.match(DIGITS)
+        if self.s.is_match(DIGITS):
+            val += self.s.match(DIGITS)
+        else:
+            raise SyntaxError(f'Unexpected token: `{self.s.curr()}`')
+
         while self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
         
