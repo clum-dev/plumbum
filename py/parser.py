@@ -78,6 +78,17 @@ class TextStream:
     def next(self) -> str|None:
         return self.look(1)
 
+    def find(self, cmatch:List[str]|str) -> bool:
+        saved = self.index
+        while self.curr() != '\n':
+            if self.is_match(cmatch):
+                self.index = saved
+                return True
+            self.index += 1
+
+        self.index = saved
+        return False
+
     def is_match(self, cmatch:List[str]|str) -> bool|None:
         
         c = self.curr()
@@ -213,7 +224,7 @@ class TokType(Enum):
     BLOCK =         ['BLOCK',       '{']
 
     SUBST =         ['SUBST',       '=>']
-    DEFINE =        ['DEFINE',      'var']
+    VAR =           ['VAR',         'var',      TokAttr.TOP_LEVEL]
 
     ASSIGN =        ['ASSIGN',      '=',        TokAttr.ASSIGN]
     ASSIGN_ADD =    ['ASSIGN_ADD',  '+=',       TokAttr.ASSIGN]
@@ -292,6 +303,7 @@ class TokType(Enum):
     STRUCTMEMBER =  ['STRUCTMEMBER',    '.']
     SELFMEMBER =    ['SELFMEMBER',      '@']
     MEMBER =        ['MEMBER',          '.']
+    DICT_KEY =      ['DICT_KEY',        ':']
     INDEX =         ['INDEX',           '[']
     CALL =          ['CALL',            '(']
 
@@ -447,6 +459,9 @@ class Parser:
                 self.s.match(';')
                 vals.append(Tok(TokType.STMT_BREAK, *self.s.pos()))
                 
+            elif self.s.is_match(TokType.COMMENT.lookup()):
+                self.s.skip_comment()
+
             else:
                 vals.append(self.subst())
             
@@ -463,6 +478,12 @@ class Parser:
 
     @_trace
     def top_level(self):
+        
+        if self.s.is_match(TokType.COMMENT.lookup()):
+            pos = self.s.pos()
+            self.s.skip_comment()
+            return Tree(Tok(TokType.COMMENT, *pos))
+            
         if self.s.is_match(TokType.with_attr(TokAttr.TOP_LEVEL)):
             if self.s.is_match(TokType.FUNC.lookup()):
                 return self.func_def()
@@ -472,14 +493,11 @@ class Parser:
                 return self.enum_def()
             elif self.s.is_match(TokType.CONST.lookup()):
                 return self.const_def()
-            elif self.s.is_match(TokType.DEFINE.lookup()):
-                return self.define()
+            elif self.s.is_match(TokType.VAR.lookup()):
+                return self.var_def()
             elif self.s.is_match(TokType.IMPORT.lookup()):
                 return self.import_def()
-            elif self.s.is_match(TokType.COMMENT.lookup()):
-                pos = self.s.pos()
-                self.s.skip_comment()
-                return Tree(Tok(TokType.COMMENT, *pos))
+            
         else:
             self.s.expected(TokType.with_attr(TokAttr.TOP_LEVEL))
         
@@ -563,8 +581,8 @@ class Parser:
         self.s.match('{')
         self.s.skip_space(newline=True)
         while not self.s.is_match('}'):
-            if self.s.is_match(TokType.DEFINE.lookup()):
-                members.append(self.define())
+            if self.s.is_match(TokType.VAR.lookup()):
+                members.append(self.var_def())
             elif self.s.is_match(TokType.FUNC.lookup()):
                 members.append(self.func_def())
             elif self.s.is_match(TokType.STRUCT.lookup()):
@@ -574,7 +592,9 @@ class Parser:
             else:
                 raise SyntaxError(TokType.STRUCT.lookup())
             
-            self.s.skip_space(newline=True)
+            # self.s.skip_space(newline=True)
+            self.s.skip([' ', ';', '\n'])
+
         self.s.match('}')
 
         return Tree(Tok(TokType.STRUCT, *pos), [name, *members])
@@ -608,7 +628,7 @@ class Parser:
         pos = self.s.pos()
         self.s.match(TokType.CONST.lookup())
         self.s.skip_space()
-
+        
         if self.s.is_match('{'):
             left = []
             self.s.match('{')
@@ -616,7 +636,7 @@ class Parser:
 
             while not self.s.is_match('}'):
                 left.append(self.param_seq())
-                self.s.skip_space(newline=True)
+                self.s.skip([' ', ';', '\n'])
 
             self.s.match('}')
             return Tree(Tok(TokType.CONST, *pos), [*left])
@@ -632,7 +652,7 @@ class Parser:
             right = self.pipeline()
         
         return Tree(Tok(TokType.CONST, *pos), [left, right])
-
+        
     @_trace
     def import_def(self):
         pos = self.s.pos()
@@ -677,6 +697,9 @@ class Parser:
     
     @_trace
     def subst(self):
+        
+        # self.s.skip_comment()
+        
         left = self.stmt()
         self.s.skip_space()
         if self.s.is_match(TokType.SUBST.lookup()):
@@ -690,8 +713,8 @@ class Parser:
 
     @_trace
     def stmt(self):    
-        if self.s.is_match(TokType.DEFINE.lookup()):
-            return self.define()
+        if self.s.is_match(TokType.VAR.lookup()):
+            return self.var_def()
 
         return self.while_stmt()
 
@@ -729,23 +752,15 @@ class Parser:
             self.s.match(TokType.FOR_STMT.lookup())
             self.s.skip_space()
 
-            iterable = self.primary()
+            captures = self.param_seq(False)
+            self.s.skip_space()
+           
+            self.s.match('in')
             self.s.skip_space()
 
-            captures = []
-            if self.s.is_match('->'):
-                self.s.match('->')
-                self.s.skip_space()
-
-                captures.append(self.id())
-                self.s.skip_space()
-
-                while self.s.is_match(','):
-                    self.s.match(',')
-                    self.s.skip_space()
-                    
-                    captures.append(self.id())
-                    self.s.skip_space()
+            # iterable = self.primary()
+            iterable = self.data_range()
+            self.s.skip_space()
 
             block = self.block()
 
@@ -800,9 +815,9 @@ class Parser:
         return Tree(Tok(TokType.ELSE_STMT, *elsePos), [elseBlock])
 
     @_trace
-    def define(self):
+    def var_def(self):
         pos = self.s.pos()
-        self.s.match(TokType.DEFINE.lookup())
+        self.s.match(TokType.VAR.lookup())
         self.s.skip_space()
 
         if self.s.is_match('{'):
@@ -812,10 +827,10 @@ class Parser:
 
             while not self.s.is_match('}'):
                 left.append(self.param_seq())
-                self.s.skip_space(newline=True)
-
+                self.s.skip([' ', ';', '\n'])
+                
             self.s.match('}')
-            return Tree(Tok(TokType.DEFINE, *pos), [*left])
+            return Tree(Tok(TokType.VAR, *pos), [*left])
 
         left = self.param_seq(False)
         self.s.skip_space()
@@ -827,7 +842,7 @@ class Parser:
             self.s.skip_space()
             right = self.pipeline()
         
-        return Tree(Tok(TokType.DEFINE, *pos), [left, right])
+        return Tree(Tok(TokType.VAR, *pos), [left, right])
 
     @_trace
     def assign(self):
@@ -924,7 +939,7 @@ class Parser:
         return left
 
     @_trace
-    def expr_seq(self):
+    def expr_seq(self, allowNewline:bool=False):
 
         left = self.expr()
         self.s.skip_space()
@@ -933,7 +948,7 @@ class Parser:
 
         while self.s.is_match(','):
             self.s.match(',')
-            self.s.skip_space()
+            self.s.skip_space(allowNewline)
             right.append(self.expr())
         
         if len(right) == 0:
@@ -1306,7 +1321,14 @@ class Parser:
                 self.s.match(TokType.STREAM.lookup())
                 left = Tree(Tok(TokType.STREAM, *sPos))
             else:
-                left = Tree(Tok(TokType.STREAMINDEX, *sPos), [self.lit_int()])            
+                left = Tree(Tok(TokType.STREAMINDEX, *sPos), [self.lit_int()])
+        elif not self.s.is_match(TokType.LAMBDA_EXPR.lookup()) and \
+                self.s.is_match(TokType.DICT_KEY.lookup()):    # :"key"
+            self.s.match(TokType.DICT_KEY.lookup())
+            if not self.s.is_match(TokType.DICT_KEY.lookup()):
+                left = Tree(Tok(TokType.DICT_KEY, *self.s.pos()), [self.primary()])
+            else:
+                raise SyntaxError("dict key")
         else:
             left = self.atom()
 
@@ -1315,15 +1337,15 @@ class Parser:
             cPos = self.s.pos()
             self.s.skip_space()
             self.s.match(TokType.CALL.lookup())
-            self.s.skip_space()
+            self.s.skip_space(True)
 
             args = None
             if self.s.is_match(')'):                        # No args call
                 self.s.skip_space()
                 self.s.match(')')
             else:
-                args = self.expr_seq()
-                self.s.skip_space()
+                args = self.expr_seq(True)
+                self.s.skip_space(True)
                 self.s.match(')')
             left = Tree(Tok(TokType.CALL, *cPos), [left, args])
 
@@ -1374,14 +1396,15 @@ class Parser:
     def list_raw(self):
         pos = self.s.pos()
         self.s.match('[')
+        self.s.skip_space(True)
         args = None
         if self.s.is_match(']'):
             self.s.match(']')
-            self.s.skip_space()
+            self.s.skip_space(True)
         else:
-            args = self.expr_seq()
+            args = self.expr_seq(True)
             self.s.match(']')
-            self.s.skip_space()
+            self.s.skip_space(True)
 
         return Tree(Tok(TokType.LIST_RAW, *pos), [args])
 
@@ -1408,22 +1431,25 @@ class Parser:
         
         pos = self.s.pos()
         left = self.id()
-        tComp = None
+        tComp = TokType.TYPE_ANY
         default = None
 
+        if self.s.find(':'):
+            self.s.skip_space()
+        
         if self.s.is_match(':'):
             self.s.match(':')
             self.s.skip_space()
             tComp = self.type_comp()
+            self.s.skip_space()
         
-        self.s.skip_space()
+        if self.s.find('='):
+            self.s.skip_space()
+
         if allowDefault and self.s.is_match('='):
             self.s.match('=')
             self.s.skip_space()
-            default = self.log_tern()
-
-        if tComp is None and default is None:
-            return left
+            default = self.expr()
         
         return Tree(Tok(TokType.PARAM, *pos), [left, tComp, default])
     
@@ -1593,10 +1619,6 @@ class Parser:
                 left = self.pipeline()
             self.s.match(')')
             return left
-        elif self.s.is_match(TokType.COMMENT.lookup()):
-            cPos = self.s.pos()
-            self.s.skip_comment()
-            return Tree(Tok(TokType.COMMENT, *cPos))
 
         if self.s.at_end():
             raise NotImplementedError('at end')
@@ -1614,9 +1636,12 @@ class Parser:
 
 
 def main():
+
+    sys.tracebacklimit = 0
+    
     if len(sys.argv) > 1:
         f = sys.argv[1]
-        p = Parser(f)
+        p = Parser(f, False)
         p.tree.printer()
 
 if __name__ == '__main__':

@@ -1,7 +1,41 @@
-func test |: a:int {
-    print(a + 42)
+struct Textstream {
+    var {
+        text:String
+        pos:int
+        size:int
+    }
+
+    func __new(t:String) -> __self {
+        @text = t
+        @pos = 0
+        @size = @text.len
+    }
+
+    func curr -> String {
+        return @text[@pos]
+    }
+
+    func next -> String {
+        @pos++
+        if @pos < @size {
+            return @curr
+        }
+        return null
+    }
+
+    func atEnd -> bool {
+        return @pos == @size - 1
+    }
 }
 
-func main -> int {
-    test(123)
+func main {
+    scan | TextStream | ts
+    
+    "input:\t" + ts.text | print
+
+    while not ts.atEnd {
+        print(ts.next())
+    }
+
+    "\ndone" | print
 }
