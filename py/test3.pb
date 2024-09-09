@@ -8,4 +8,3 @@ func main |> args {
     } |@ :> a {a.upper} |> print
 
 }
-

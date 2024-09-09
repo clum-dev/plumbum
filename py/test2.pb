@@ -1,12 +1,13 @@
-enum Role {
-    BOSS
-    EMPLOYEE
+var d = {
+    :."Hello" = "hi"
+    :"Goodbye" = "bye"
 
-    func getSalary {
-        if @__set == @BOSS {
-            return 10000
-        } else if @__set == @EMPLOYEE {
-            return 5000
-        }
+    func test {
+        return 123
     }
+}
+
+func main {
+    d["Hello"] | print
+    d.test | print
 }

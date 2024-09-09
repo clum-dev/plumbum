@@ -80,7 +80,7 @@ class TextStream:
 
     def find(self, cmatch:List[str]|str) -> bool:
         saved = self.index
-        while self.curr() != '\n':
+        while self.curr() not in [None, '\n']:
             if self.is_match(cmatch):
                 self.index = saved
                 return True
@@ -187,7 +187,7 @@ class TextStream:
             got = self.curr()
 
         if isinstance(cmatch, list) and len(cmatch) > 10:
-            cmatch = f'[{cmatch[0]}, {cmatch[1]} ... {cmatch[-2]}, {cmatch[-1]}]'
+            cmatch = f'[{cmatch[0]}, {cmatch[1]}, ..., {cmatch[-1]}]'
 
         lineNum = f'[{self.line}] '
         linePrint = lineNum + self.lines[self.line - 1]
@@ -222,6 +222,10 @@ class TokType(Enum):
     IMPORT =        ['IMPORT',      'import',   TokAttr.TOP_LEVEL]
 
     BLOCK =         ['BLOCK',       '{']
+
+    RETURN =        ['RETURN',      'return'] 
+    CONTINUE =      ['CONTINUE',    'continue']
+    BREAK =         ['BREAK',       'break']
 
     SUBST =         ['SUBST',       '=>']
     VAR =           ['VAR',         'var',      TokAttr.TOP_LEVEL]
@@ -453,7 +457,7 @@ class Parser:
         while not self.s.is_match('}'):
             if self.s.is_match('\n'):
                 self.s.match('\n')
-                vals.append(Tok(TokType.LINEBREAK, *self.s.pos()))
+                # vals.append(Tok(TokType.LINEBREAK, *self.s.pos()))
 
             elif self.s.is_match(';'):
                 self.s.match(';')
@@ -462,11 +466,14 @@ class Parser:
             elif self.s.is_match(TokType.COMMENT.lookup()):
                 self.s.skip_comment()
 
+            elif self.s.is_match(' '):
+                self.s.skip_space()
+
             else:
                 vals.append(self.subst())
+                if not self.s.is_match('}'):
+                    self.s.match([';', '\n'])
             
-            self.s.skip_space()
-
         self.s.match('}')
 
         return Tree(Tok(TokType.BLOCK, *pos), vals)
@@ -576,28 +583,9 @@ class Parser:
 
         name = self.id()
         self.s.skip_space()
+        block = self.block()
 
-        members = []
-        self.s.match('{')
-        self.s.skip_space(newline=True)
-        while not self.s.is_match('}'):
-            if self.s.is_match(TokType.VAR.lookup()):
-                members.append(self.var_def())
-            elif self.s.is_match(TokType.FUNC.lookup()):
-                members.append(self.func_def())
-            elif self.s.is_match(TokType.STRUCT.lookup()):
-                members.append(self.struct_def())
-            elif self.s.is_match(TokType.CONST.lookup()):
-                members.append(self.const_def())
-            else:
-                raise SyntaxError(TokType.STRUCT.lookup())
-            
-            # self.s.skip_space(newline=True)
-            self.s.skip([' ', ';', '\n'])
-
-        self.s.match('}')
-
-        return Tree(Tok(TokType.STRUCT, *pos), [name, *members])
+        return Tree(Tok(TokType.STRUCT, *pos), [name, block])
 
     @_trace
     def enum_def(self):
@@ -698,10 +686,8 @@ class Parser:
     @_trace
     def subst(self):
         
-        # self.s.skip_comment()
-        
         left = self.stmt()
-        self.s.skip_space()
+        # self.s.skip_space()
         if self.s.is_match(TokType.SUBST.lookup()):
             pos = self.s.pos()
             self.s.match(TokType.SUBST.lookup())
@@ -713,8 +699,29 @@ class Parser:
 
     @_trace
     def stmt(self):    
-        if self.s.is_match(TokType.VAR.lookup()):
-            return self.var_def()
+        if self.s.is_match(TokType.with_attr(TokAttr.TOP_LEVEL)):
+            return self.top_level()
+        
+        elif self.s.is_match(TokType.RETURN.lookup()):
+            self.s.match(TokType.RETURN.lookup())
+            self.s.skip_space()
+            retval = None
+            if not self.s.is_match('\n'):
+                retval = self.expr_seq()
+            return Tree(Tok(TokType.RETURN, *self.s.pos()), [retval])
+
+        elif self.s.is_match(TokType.CONTINUE.lookup()):
+            self.s.match(TokType.CONTINUE.lookup())
+            self.s.skip_space()
+            return Tree(Tok(TokType.CONTINUE, *self.s.pos()), [])
+
+        elif self.s.is_match(TokType.BREAK.lookup()):
+            self.s.match(TokType.BREAK.lookup())
+            self.s.skip_space()
+            breakLabel = None
+            if not self.s.is_match('\n'):
+                breakLabel = self.id()
+            return Tree(Tok(TokType.BREAK, *self.s.pos()), [breakLabel])
 
         return self.while_stmt()
 
@@ -758,8 +765,9 @@ class Parser:
             self.s.match('in')
             self.s.skip_space()
 
+            iterable = self.pipeline()
             # iterable = self.primary()
-            iterable = self.data_range()
+            # iterable = self.data_range()
             self.s.skip_space()
 
             block = self.block()
@@ -1482,7 +1490,8 @@ class Parser:
     def type_prim(self):
 
         pos = self.s.pos()
-        name = self.id()
+        # name = self.id()
+        name = self.primary()   # TODO verify this
         
         # TODO make this not terrible (use lookup)
         if name.leaves[0] == TokType.TYPE_INT.lookup():
@@ -1530,6 +1539,9 @@ class Parser:
             tokType = TokType.TYPE_NULL
         elif val == TokType.TYPE_ANY.lookup():
             tokType = TokType.TYPE_ANY
+
+        elif val in [t.lookup() for t in TokType]:
+            raise SyntaxError(f'id: reserved keyword:\t`{val}`')
 
         return Tree(Tok(tokType, line, col), [val])
     
@@ -1627,7 +1639,7 @@ class Parser:
         if self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
         else:
-            raise SyntaxError(f'Unexpected token: `{self.s.curr()}`')
+            raise SyntaxError(f'Unexpected token: `{self.s.curr()}` \tat line {self.s.line}, col {self.s.col}')
 
         while self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
@@ -1637,7 +1649,7 @@ class Parser:
 
 def main():
 
-    sys.tracebacklimit = 0
+    # sys.tracebacklimit = 0
     
     if len(sys.argv) > 1:
         f = sys.argv[1]
