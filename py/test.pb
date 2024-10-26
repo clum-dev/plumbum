@@ -12,19 +12,19 @@ struct Textstream {
     }
 
     func curr -> String {
-        return @text[@pos]
+        @text[@pos]
     }
 
     func next -> String {
         @pos++
         if @pos < @size {
-            return @curr
+            @curr
         }
         return null
     }
 
     func atEnd -> bool {
-        return @pos == @size - 1
+        @pos == @size - 1
     }
 }
 

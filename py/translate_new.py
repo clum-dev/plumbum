@@ -1,176 +1,104 @@
 from parser import *
 import sys
 
+from enum import Enum
 
-class Config:
-    strict:bool
-    
-    def __init__(self) -> None:
-        self.strict = False
-
-
-class Scope:
-
-    idStr:str
-    level:int
-    tree:Tree
-
-    parent:object
-    data:list
-    config:Config
-
-    def __init__(self, idStr:str, level:int, parent:object, tree:Tree) -> None:
-        self.idStr, self.level, self.tree = idStr, level, tree
-        self.parent = parent
-        if self.parent is not None:
-            self.parent.data.append(self)
-        self.data = []
-        self.config = Config()
+class TInst(Enum):
+    LOAD = 0
+    STORE = 1
+    BINOP = 2
+    UNOP = 3
 
     def __str__(self) -> str:
-        return f'{self.idStr}({self.level})'
+        return self.name
 
-    def printer(self) -> None:
-        print('\t'*self.level, self, sep='')
-        for item in self.data:
-            print('\t'*self.level, item, sep='')
-            
-    def add_data(self, data:object) -> None:
-        self.data.append(data)
+    def __repr__(self) -> str:
+        return self.__str__()
 
+class Inst:
 
-class Data:
-    
-    tree:Tree
-    name:str            # for lookup
-    value:object        # for output
-    scope:Scope
+    name:TInst
+    arg:str
 
-    isConst:bool
-    isCallable:bool
-    isIterable:bool
-    isIndexable:bool
-
-    def __init__(self, t:Tree, scope:Scope) -> None:
-        self.tree = t
-        self.scope = scope
-        self.toktype = self.tree.tok.t
-
-        self.isConst = False
-        self.isCallable = False
-        self.isIterable = False
-        self.isIndexable = False
-
-
-class DataType:
-
-    tree:Tree
-    name:str
-
-    isCustom:bool
-    default:object
-    
-    def __init__(self, t:Tree) -> None:
-        self.tree = t
-        self.isCustom = True if t.tok.t == TokType.TYPE_DEF else False
-        self.name = t.tok.t.lookup()
-        self.default = None
-
-        match t.tok.t:
-            case TokType.TYPE_INT:
-                self.default = 0
-            case TokType.TYPE_FLOAT:
-                self.default = 0.0
-            case TokType.TYPE_STRING:
-                self.default = ''
-            case TokType.TYPE_BOOL:
-                self.default = False
-            case TokType.TYPE_NULL, TokType.TYPE_DEF, TokType.TYPE_ANY:
-                self.default = None
-            case TokType.TYPE_LIST:
-                self.default = list()
-            case TokType.TYPE_DICT:
-                self.default = dict()
-        
-
-class Param(Data):
-    
-    dType:DataType
-    default:Data
-
-    def __init__(self, t:Tree, parentScope:Scope) -> None:
-        super().__init__(t, parentScope)
-        # TODO
-        
+    def __init__(self, name:TInst, arg) -> None:
+        assert isinstance(name, TInst)
+        self.name = name
+        self.arg = arg
 
     def __str__(self) -> str:
-        return f'{self.name}:{self.dType}({self.default})'
+        out = str(self.name)
+        if self.arg is not None:
+            out += f' ({self.arg})'
+        return out
 
     def __repr__(self) -> str:
         return self.__str__()
 
 
-class Var(Data):
 
-    def __init__(self, t:Tree, scope:Scope) -> None:
-        super().__init__(t, scope)
-        # TODO
+class Interp:
 
+    stack:list
+    instrs:list[Inst]
+    pc:int
 
+    def __init__(self, instrs:list[Inst]) -> None:
+        self.stack = []
+        self.instrs = instrs
+        self.pc = 0
 
-class Func(Data):
+    def fetch(self) -> Inst|None:
+        return self.instrs[self.pc] if self.pc < len(self.instrs) else None
     
-    localScope:Scope
-    params:list
+    def exec(self):
+        f = self.fetch()
+        match f.name:
+            case TInst.LOAD:
+                self.stack.append(f.arg)
 
-    def __init__(self, t:Tree, scope:Scope) -> None:
-        super().__init__(t, scope)
-        self.isCallable = True
+            case TInst.BINOP:
+                match f.arg:
+                    case 'add':
+                        self.stack.append(self.stack.pop() + self.stack.pop())
+                    case _:
+                        pass
+                    
+            case TInst.UNOP:
+                match f.arg:
+                    case 'negate':
+                        self.stack.append(-self.stack.pop())
+                    case _:
+                        pass
+            case _:
+                pass
+    
+    def run(self):
+        while self.pc < len(self.instrs):
+            print(f'{self.pc}\t{self.fetch()}')
+            self.exec()
+            print(self.stack)
+            self.pc += 1
 
-        # Set name and local scope
-        self.name = t.leaves[0].leaves[0]
-        self.localScope = Scope(self.name, scope.level+1, scope, t)
-
-        # Set params
-        params = t.leaves[1]
-        self.params = []
-        if params is not None:
-            assert params.tok.t == TokType.PARAM_SEQ
-            for p in self.params:
-                param = Param(p, self.localScope)
-                self.params.append(param)           # param for calling
-
-                # TODO add param as var to local scope
-
-                self.localScope.add_data(param)     # local for reference
-        
-    def __str__(self) -> str:
-        return f'{self.scope}::{self.name}'
-
-def get_data_from_tok(t:Tree, scope:Scope) -> Data:
-    match t.tok.t:
-        case TokType.FUNC:
-            scope.add_data(Func(t, scope))
-
-        case _:
-            pass
-
-
-def translate(tree:Tree, baseScope:Scope):
-    for leaf in tree.leaves:
-        get_data_from_tok(leaf, baseScope)
-        
+            print('-'*50)
 
 def main():
+
+    i = []
+    i.append(Inst(TInst.LOAD, 1))
+    i.append(Inst(TInst.LOAD, 2))
+    i.append(Inst(TInst.LOAD, 30))
+    i.append(Inst(TInst.BINOP, 'add'))
+    i.append(Inst(TInst.BINOP, 'add'))
+    i.append(Inst(TInst.UNOP, 'negate'))
+
+    interp = Interp(i)
+    interp.run()
+    
     
     f = sys.argv[1]
     p = Parser(f)
     p.tree.printer()
     print('-'*50)
-
-    progScope = Scope('program', 0, None, p.tree)
-    translate(p.tree, progScope)
-
 
 if __name__ == '__main__':
     main()

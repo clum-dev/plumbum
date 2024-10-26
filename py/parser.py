@@ -307,7 +307,7 @@ class TokType(Enum):
     STRUCTMEMBER =  ['STRUCTMEMBER',    '.']
     SELFMEMBER =    ['SELFMEMBER',      '@']
     MEMBER =        ['MEMBER',          '.']
-    DICT_KEY =      ['DICT_KEY',        ':']
+    DICT_KEY =      ['DICT_KEY',        '::']
     INDEX =         ['INDEX',           '[']
     CALL =          ['CALL',            '(']
 
@@ -1471,7 +1471,9 @@ class Parser:
             self.s.match(TokType.TYPE_LIST.lookup())
             if self.s.is_match('<'):
                 self.s.match('<')
+                self.s.skip_space()
                 inType = self.type_comp()
+                self.s.skip_space()
                 self.s.match('>')
             return Tree(Tok(TokType.TYPE_LIST, *pos), [inType])
 
@@ -1479,7 +1481,15 @@ class Parser:
             self.s.match(TokType.TYPE_DICT.lookup())
             if self.s.is_match('<'):
                 self.s.match('<')
+                self.s.skip_space()
                 inType = self.type_comp()
+                self.s.skip_space()
+                inType2 = None
+                if self.s.is_match(','):
+                    self.s.match(',')
+                    self.s.skip_space()
+                    inType2 = self.type_comp()
+                    self.s.skip_space()
                 self.s.match('>')
             return Tree(Tok(TokType.TYPE_DICT, *pos), [inType])
 
@@ -1522,7 +1532,12 @@ class Parser:
         tokType = TokType.ID
         
         # TODO make this not terrible (use toktype dict lookup)
-        if val == TokType.LIT_TRUE.lookup():
+        if val == TokType.TYPE_LIST.lookup():
+            tokType = TokType.TYPE_LIST
+        elif val == TokType.TYPE_DICT.lookup():
+            tokType = TokType.TYPE_DICT
+
+        elif val == TokType.LIT_TRUE.lookup():
             tokType = TokType.LIT_TRUE
         elif val == TokType.LIT_FALSE.lookup():
             tokType = TokType.LIT_FALSE
