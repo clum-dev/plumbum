@@ -14,7 +14,7 @@ struct Shape {
     var test:any = 123    # don't care about this one
 
     # Constructor
-    func __new(t:@Type, r:float) -> __self {
+    func @@new(t:@Type, r:float) -> @@self {
         @shapeType = t
 
         if t == @Type.SQUARE {
@@ -22,6 +22,8 @@ struct Shape {
         } else if t == @Type.CIRCLE {
             @radius = r            
         }
+
+        return @@self
     }
 
     func area -> float {

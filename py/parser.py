@@ -375,7 +375,8 @@ class Tok:
         self.t, self.line, self.col = t, line, col
 
     def __str__(self) -> str:
-        return f'{self.t:20}\t({self.line}:{self.col})'
+        return f'{self.t}'
+        # return f'{self.t:20}\t({self.line}:{self.col})'
 
     def printer(self, indent:int=0) -> None:
         shift = ' ' * indent
@@ -408,7 +409,11 @@ class Tree:
                 print(f'{shift}{leaf}')  
 
     def __str__(self) -> str:
-        return '{' + f'{self.tok}: {str(self.leaves)}' + '}'
+        # return '{' + f'{self.tok}: c={len(self.leaves)}' + '}'
+        return f'{self.tok}: c={len(self.leaves)}'
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 class Parser:
