@@ -29,12 +29,12 @@ struct TodoList {
     }
 
     func __str -> str {
-        @entries |@ e -> {str(e) + "\n"} |+ out
+        @entries |@ e => {str(e) + "\n"} |+ out
         "{@name}: {out}"
     }
 
     func mark_all_complete {
-        @entries |@ e -> {e.mark_complete()}
+        @entries |@ e => {e.mark_complete()}
     }
 }
 

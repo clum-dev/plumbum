@@ -1,7 +1,7 @@
 import sys
 from typing import List, Tuple
 from typing_extensions import Self
-from enum import Enum
+from enum import Enum, auto
 from pprint import pprint
 from typing import List, Any
 from time import sleep
@@ -214,18 +214,18 @@ class TextStream:
 
 
 class TokAttr(Enum):
-    PIPE = 0
-    STAR = 1
-    TERM = 2
-    ASSIGN = 3
-    TERM_ASSIGN = 4
-    COMP = 5
-    TOP_LEVEL = 6
-    LITERAL = 7
-    TYPE = 8
+    PIPE = auto()
+    STAR = auto()
+    TERM = auto()
+    ASSIGN = auto()
+    TERM_ASSIGN = auto()
+    COMP = auto()
+    TOP_LEVEL = auto()
+    LITERAL = auto()
+    TYPE = auto()
 
-    BINOP = 9
-    UNOP = 10
+    BINOP = auto()
+    UNOP = auto()
 
     def __str__(self) -> str:
         return ""
@@ -390,6 +390,7 @@ class TokType(Enum):
         if isinstance(self.value[2], list):
             return a in self.value[2]
         return a == self.value[2]
+
 
 class Tok:
     t:TokType

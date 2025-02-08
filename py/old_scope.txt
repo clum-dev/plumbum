@@ -1,0 +1,57 @@
+
+class Scope:
+
+    tree:Tree                           # Parse tree
+    level:int                           # Scope depth level
+    parent:Self                         # Parent scope
+    name:str                            # Lookup name
+
+    _locals:dict[str, Data]             # Local data lookup 
+    _insts:list[Inst]                   # Ordered instruction list
+
+    _call_args:list[str]                # Lookup names for args
+    _call_non_defaults:int              # Number of non-default values
+    _call_store_mode:Any                # e.g. |> for funcs (if used) - default |:
+
+    _ret:Data                           # Data returned from scope (execution of insts)
+
+    debug:bool
+
+    def __init__(self, tree:Tree, level:int=0, parent:Self|None=None, showDebug:bool=False) -> None:
+        self.tree, self.level, self.parent = tree, level, parent
+        self.debug = showDebug
+
+        self._locals = {}
+        self._insts = []
+
+        self._call_args = []
+        self._call_non_defaults = 0
+        self._call_store_mode = TokType.PIPE_PAIR
+
+        self._ret = DNull(None, None, self)
+        
+        if isinstance(tree, Tree):
+            self.name = tree.tok.t.name
+
+            for l in tree.leaves:
+                if isinstance(l, Tree):
+                    if not self.gen_local(l):
+                        self.gen_op(l)
+
+    def __str__(self) -> str:
+        return f'SCOPE :: {self.name}'
+    
+    def __repr__(self) -> str:
+        return self.__str__()
+    
+    def lookup_local(self, name:str) -> Data|None:
+        res = self._locals.get(name)
+        if res is not None:
+            return res
+        elif self.parent is not None:
+            return self.parent.lookup_local(name)
+        
+        return None
+
+    def runtime_add_data(self, name:str):
+        self._locals[name] = DAny(None, Any, self, name=name)

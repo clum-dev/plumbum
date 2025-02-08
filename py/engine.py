@@ -45,69 +45,83 @@ class Stack:
         self.items.clear()
 
 
-
 class Engine:
 
-    scope:Scope
+    scope:DScope
     data_stack:Stack
 
-    def __init__(self, scope:Scope) -> None:       
+    def __init__(self, scope:DScope) -> None:       
+        assert isinstance(scope, DScope)
         self.scope = scope
         self.data_stack = Stack()
 
     def run_entrypoint(self):
-        entry = self.scope.lookup_local('main')
-        self.exec_scope(entry.scope)
+
+        # TODO fix this #FIXME        
+        
+        entry:DScope = self.scope.lookup_local('main')
+        entry = entry.lookup_local('BLOCK')
+        assert isinstance(entry, DScope)
+        self.exec_scope(entry)
         print('done')
 
-    def exec_scope(self, scope:Scope):
-        self.scope = scope
+    def exec_scope(self, scope:DScope):
 
-        print(f'SCOPE :: {scope.name}\n')
-        for i in scope.insts:
+        self.scope = scope.lookup_local('BLOCK')
+        print(f'SCOPE :: {self.scope.name}\n')
+
+        for i in self.scope.insts:
             print(i)
         print('='*80)
 
+        # exec
         for i in scope.insts:
             self.eval_inst(i)
             print(self.data_stack)
             print('-'*80)
 
-    def eval_inst(self, inst:Inst) -> Data|None:
+    def eval_inst(self, inst:Inst) -> DScope|None:
         
         print(f'>>> {inst}')
         
         match inst.name:
-            case Inst.InstType.RET:
-                self.scope._ret = self.data_stack.pop()
-                self.data_stack.clear()
+            case InstType.RET:
+                raise NotImplementedError('eval inst ret')
+                
+                # self.scope._ret = self.data_stack.pop()
+                # self.data_stack.clear()
 
-            case Inst.InstType.CALL:
+            case InstType.CALL:
                 target = self.scope.lookup_local(inst.arg)
                 assert target.isCallable
-                s:Scope = target.scope
+                
+                raise NotImplementedError('eval inst call')
 
-                for i in range(s._call_non_defaults):
-                    a = s.lookup_local(s._call_args[i])
-                    # print(a)
-                    a._assign(self.data_stack.pop())
+                # for i in range(s._call_non_defaults):
+                #     a = s.lookup_local(s._call_args[i])
+                #     # print(a)
+                #     a._assign(self.data_stack.pop())
 
-                inner = Engine(target.scope)
-                inner.exec_scope(target.scope)
-                self.data_stack.push(target.scope._ret)
+                # inner = Engine(target.scope)
+                # inner.exec_scope(target.scope)
+                # self.data_stack.push(target.scope._ret)
             
-            case Inst.InstType.LOADV:
+            case InstType.LOADV:
                 self.data_stack.push(inst.arg)
 
-            case Inst.InstType.LOADN:
+            case InstType.LOADN:
                 target = self.scope.lookup_local(inst.arg)
                 self.data_stack.push(target)
             
-            case Inst.InstType.STORE:
+            case InstType.STORE:
                 target = self.scope.lookup_local(inst.arg)
+                if target is None:
+                    self.scope.runtime_add_data(inst.arg)
+                    target = self.scope.lookup_local(inst.arg)
+
                 target._assign(self.data_stack.pop())
 
-            case Inst.InstType.BINOP:
+            case InstType.BINOP:
                 assert isinstance(inst.arg, TokType)
                 
                 right = self.data_stack.pop()
@@ -127,7 +141,7 @@ class Engine:
                     case TokType.POWER:
                         self.data_stack.push(left._pow(right))
             
-            case Inst.InstType.UNOP:
+            case InstType.UNOP:
                 assert isinstance(inst.arg, TokType)
 
                 left = self.data_stack.pop()
@@ -145,10 +159,11 @@ class Engine:
         return None
 
 def main():
-    e = Engine(Scope(Parser('test2.pb').tree, debug=True))
+    fname = sys.argv[1] if len(sys.argv) > 1 else 'test4.pb'
+    e = Engine(Generator(Parser(fname).tree).root)
     print('='*80)
-    # e.scope.tree.printer()
     e.run_entrypoint()
+    print('='*80)
 
 if __name__ == '__main__':
     main()

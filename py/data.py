@@ -1,5 +1,10 @@
-from typing import Any
+from typing import Any, Union, TypeAlias
 from typing_extensions import Self, Type
+from enum import Enum, auto
+from parser import *
+
+ANY_PRIM = Union[int, float, bool, str, None]
+
     
 class Data:
 
@@ -8,16 +13,17 @@ class Data:
     isIterable:bool
     isIndexable:bool
 
-    name:str
-    value:Self|list[Self]
+    value:Any
     dtype:Type
-    scope:Any
+    parent:Self|None
+    name:str
+    level:int
 
-    subclass:Type
+    def __init__(self, value:Any, dtype:Type, parent:Self|None, name:str|None=None) -> None:
 
-    def __init__(self, value, dtype, scope, name:str|None=None) -> None:
-        self.value, self.dtype = value, dtype
-        self.scope = scope
+        self.value = value
+        self.dtype = dtype
+        self.parent = parent
         self.name = name
 
         self.isConst = False
@@ -25,7 +31,10 @@ class Data:
         self.isIterable = False
         self.isIndexable = False
 
-        self.subclass = None
+        if parent is None:
+            self.level = 0
+        else:
+            self.level = parent.level + 1
 
     def __str__(self) -> str:
         return f'{self.name}: {self.value} ({self.dtype})'
@@ -208,33 +217,38 @@ class Data:
 
 class DPrim(Data):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
+    def autocast(self, value:Any):
+        if self.dtype is not Any:
+            return self.dtype(value)
+        return value
 
     # Assignment
     def _assign(self, value:Data):
         assert not self.isConst
-        self.value = self.dtype(value.value)
+        self.value = self.autocast(value.value)
 
     def _assign_add(self, value:Data):
         assert not self.isConst
-        self.value += self.dtype(value.value)
+        self.value += self.autocast(value.value)
 
     def _assign_sub(self, value:Data):
         assert not self.isConst
-        self.value -= self.dtype(value.value)
+        self.value -= self.autocast(value.value)
 
     def _assign_mult(self, value:Data):
         assert not self.isConst
-        self.value *= self.dtype(value.value)
+        self.value *= self.autocast(value.value)
 
     def _assign_div(self, value:Data):
         assert not self.isConst
-        self.value /= self.dtype(value.value)
+        self.value /= self.autocast(value.value)
 
     def _assign_mod(self, value:Data):
         assert not self.isConst
-        self.value %= self.dtype(value.value)
+        self.value %= self.autocast(value.value)
 
     # Pipes
     def _pipe(self, value:Data) -> Data:
@@ -243,66 +257,66 @@ class DPrim(Data):
 
     # Comparisons
     def _eq(self, value:Data) -> Data:
-        return DBool(self.value == self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value == self.autocast(value.value), dtype=bool, parent=self.parent)
 
     def _neq(self, value:Data) -> Data:
-        return DBool(self.value != self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value != self.autocast(value.value), dtype=bool, parent=self.parent)
     
     def _lt(self, value:Data) -> Data:
-        return DBool(self.value < self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value < self.autocast(value.value), dtype=bool, parent=self.parent)
 
     def _gt(self, value:Data) -> Data:
-        return DBool(self.value > self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value > self.autocast(value.value), dtype=bool, parent=self.parent)
 
     def _lte(self, value:Data) -> Data:
-        return DBool(self.value <= self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value <= self.autocast(value.value), dtype=bool, parent=self.parent)
 
     def _gte(self, value:Data) -> Data:
-        return DBool(self.value >= self.dtype(value.value), dtype=bool, scope=self.scope)
+        return DBool(self.value >= self.autocast(value.value), dtype=bool, parent=self.parent)
     
     # Bitwise
     def _bit_not(self) -> Data:
-        return self.subclass(~self.value, self.dtype)
+        return self.autocast(~self.value, self.dtype)
     
     def _bit_or(self, value:Data) -> Data:
-        return self.subclass(self.value | value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value | value.value, self.dtype, parent=self.parent)
     
     def _bit_xor(self, value:Data) -> Data:
-        return self.subclass(self.value ^ value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value ^ value.value, self.dtype, parent=self.parent)
     
     def _bit_and(self, value:Data) -> Data:
-        return self.subclass(self.value & value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value & value.value, self.dtype, parent=self.parent)
 
     def _bit_shr(self, value:Data) -> Data:
-        return self.subclass(self.value >> value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value >> value.value, self.dtype, parent=self.parent)
 
     def _bit_shl(self, value:Data) -> Data:
-        return self.subclass(self.value << value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value << value.value, self.dtype, parent=self.parent)
     
     # Math
     def _add(self, value:Data) -> Data:
-        return self.subclass(self.value + value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value + value.value, self.dtype, parent=self.parent)
     
     def _sub(self, value:Data) -> Data:
-        return self.subclass(self.value - value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value - value.value, self.dtype, parent=self.parent)
 
     def _mult(self, value:Data) -> Data:
-        return self.subclass(self.value * value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value * value.value, self.dtype, parent=self.parent)
     
     def _div(self, value:Data) -> Data:
-        return self.subclass(self.value / value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value / value.value, self.dtype, parent=self.parent)
 
     def _mod(self, value:Data) -> Data:
-        return self.subclass(self.value % value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value % value.value, self.dtype, parent=self.parent)
     
     def _pow(self, value:Data) -> Data:
-        return self.subclass(self.value % value.value, self.dtype, scope=self.scope)
+        return self.autocast(self.value % value.value, self.dtype, parent=self.parent)
 
     def _posate(self) -> Data:
-        return self.subclass(+self.value, self.dtype, scope=self.scope)
+        return self.autocast(+self.value, self.dtype, parent=self.parent)
 
     def _posate(self) -> Data:
-        return self.subclass(-self.value, self.dtype, scope=self.scope)
+        return self.autocast(-self.value, self.dtype, parent=self.parent)
 
     # Crement
     def _increment(self) -> Data:
@@ -353,37 +367,38 @@ class DPrim(Data):
 
 class DAny(DPrim):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
 
 class DInt(DPrim):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
-        self.subclass = DInt
-                
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
+
 class DFloat(DPrim):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
-        self.subclass = DFloat
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
 
 class DBool(DPrim):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
-        self.subclass = DBool
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
 
 class DNull(DPrim):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
-        self.subclass = DNull
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
 
 class DString(Data):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
         self.isIndexable = True
         self.isIterable = True
 
@@ -422,8 +437,8 @@ class DString(Data):
 
 class DList(Data):
     
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
         self.isIndexable = True
         self.isIterable = True
 
@@ -470,16 +485,91 @@ class DList(Data):
 
 class DDict(Data):
 
-    def __init__(self, value, dtype, scope, name=None):
-        super().__init__(value, dtype, scope, name)
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
 
 
-class DFunc(Data):
+class InstType(Enum):
+    
+    RET   = auto()
+    CALL  = auto()
+    LOADV = auto()
+    LOADN = auto()
+    STORE = auto()
+    BINOP = auto()
+    UNOP  = auto()
 
-    def __init__(self, value, dtype, scope, name = None):
-        super().__init__(value, dtype, scope, name)
+    BUILD_STR = auto()
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class Inst:
+    
+    name:InstType
+    arg:TokType|Data
+
+    def __init__(self, name:InstType, arg:TokType|Data) -> None:
+        assert isinstance(name, InstType)
+        self.name = name
+        self.arg = arg
+
+    def __str__(self) -> str:
+        out = str(self.name)
+        if self.arg is not None:
+            out += f' ({self.arg})'
+        return out
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
+
+class DScope(Data):
+
+    d_locals:dict[str, Data]            # Local data lookup 
+    insts:list[Inst]                    # Ordered instruction list
+
+    call_args:list[str]                 # Lookup names for args
+    call_non_defaults:int               # Number of non-default values
+    call_store_mode:Any                 # e.g. |> for funcs (if used) - default |:
+
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+        
         self.isCallable = True
 
-    def _call(self, args:Self) -> Data:
-        raise RuntimeError('func call: todo')
+        self.d_locals = {}
+        self.insts = []
+
+        self.call_args = []
+        self.call_non_defaults = 0
+        self.call_store_mode = TokType.PIPE_PAIR
+
+        self.value = DNull(None, None, self, name='_ret')    # default returns null
+
+    def lookup_local(self, name:str) -> Data|None:
+        res = self.d_locals.get(name)
+        if res is not None:
+            return res
+        elif self.parent is not None:
+            return self.parent.lookup_local(name)
+        
+        return None
     
+    def runtime_add_data(self, name:str):
+        assert name not in self.d_locals.keys()
+        self.d_locals[name] = DAny(None, Any, self, name=name)
+
+
+class DFunc(DScope):
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)
+
+
+class DStruct(DScope):
+    def __init__(self, value, dtype, parent, name=None):
+        super().__init__(value, dtype, parent, name)

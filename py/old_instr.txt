@@ -1,0 +1,47 @@
+# def gen_op(self, tree:Tree) -> bool:
+
+#     if tree.tok.t.has_attr(TokAttr.BINOP):
+#         self.gen_op(tree.leaves[0])
+#         self.gen_op(tree.leaves[1])
+#         self.insts.append(Inst(Inst.InstType.BINOP, tree.tok.t))
+        
+#     elif tree.tok.t.has_attr(TokAttr.UNOP):
+#         self.gen_op(tree.leaves[0])
+#         self.insts.append(Inst(Inst.InstType.UNOP, tree.tok.t))
+
+#     elif tree.tok.t.has_attr(TokAttr.LITERAL):
+#         lit = self.gen_literal(tree)
+#         if lit is not None:
+#             self.insts.append(Inst(Inst.InstType.LOADV, lit))
+    
+#     elif tree.tok.t == TokType.ID:
+#         self.insts.append(Inst(Inst.InstType.LOADN, tree.leaves[0]))
+
+#     elif tree.tok.t == TokType.ASSIGN:
+#         self.gen_op(tree.leaves[1])
+#         self.insts.append(Inst(Inst.InstType.STORE, tree.leaves[0].get_last()))
+
+#     elif tree.tok.t == TokType.CALL:
+        
+#         if tree.leaves[1] is not None:
+#             if tree.leaves[1].tok.t == TokType.EXPR_SEQ:
+#                 for l in tree.leaves[1].leaves:
+#                     self.gen_op(l)
+#             else:
+#                 self.gen_op(tree.leaves[1])
+        
+#         self.insts.append(Inst(Inst.InstType.CALL, tree.leaves[0].get_last()))
+
+#     elif tree.tok.t == TokType.RETURN:
+#         self.gen_op(tree.leaves[0])
+#         self.insts.append(Inst(Inst.InstType.RET, None))
+
+#     else:
+#         if self.debug:
+#             print(f'DScope: {self.name}\t skipping op {tree.tok.t}')
+#         # raise NotImplementedError(f'gen op {tree.tok.t}')
+#         return False
+
+#     if self.debug:
+#         print(f'DScope: {self.name}\t adding op {tree.tok.t.name}')
+#     return True
