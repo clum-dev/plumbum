@@ -15,6 +15,7 @@ WHITESPACE = [' ', '\t']
 indent:int = 0
 debug:bool
 
+
 class TextStream:
     
     name: str
@@ -34,11 +35,11 @@ class TextStream:
         with open(filename, 'r') as f:
             self.name = filename
             self.text = f.read()
-            self.lines = self.text.splitlines()
-            self.index = 0
-            self.line, self.col = 1, 0 
-            self.gotMatch = None
-            self.rewindIdx = None
+        self.lines = self.text.splitlines()
+        self.index = 0
+        self.line, self.col = 1, 0 
+        self.gotMatch = None
+        self.rewindIdx = None
 
     def __str__(self) -> str:
         return f'TEXTSTREAM :: {self.name}'
@@ -415,7 +416,7 @@ class Tok:
 
 class Tree:
     tok: Tok
-    leaves: list[Self]
+    leaves: list[Self|None]
 
     def __init__(self, tok:Tok, leaves:List=None) -> None:
         self.tok = tok
@@ -427,7 +428,7 @@ class Tree:
     def add(self, leaves) -> None:
         self.leaves.append(leaves)
 
-    def get_last(self) -> Any:
+    def get_leftmost(self) -> Any:
         node = self.leaves[0]
         while isinstance(node, Tree):
             node = node.leaves[0]
@@ -452,6 +453,69 @@ class Tree:
 
     def __repr__(self) -> str:
         return self.__str__()
+
+
+class TFunc(Tree):
+
+    def __init__(self, tok:Tok, leaves:List=None) -> None:
+        super().__init__(tok, leaves)
+
+    @property
+    def name(self) -> str:
+        return self.get_leftmost()
+    
+    @property
+    def params(self) -> dict[str, tuple[Tok, Tok]]:
+        assert isinstance(self.leaves[1], TParamSeq)
+        return self.leaves[1].params
+
+    @property
+    def pipe_type(self) -> Tok:
+        return self.leaves[2]
+
+    @property
+    def ret(self) -> dict[str, tuple[Tok, Tok]]:
+        assert isinstance(self.leaves[3], TParam)
+        return self.leaves[3].param
+
+    @property
+    def block(self) -> Tok:
+        return self.leaves[4]
+
+
+class TParamSeq(Tree):
+
+    def __init__(self, tok:Tok, leaves:List=None) -> None:
+        super().__init__(tok, leaves)
+        self.leaves:list[TParam]
+
+    @property
+    def params(self) -> dict[str, tuple[Tok, Tok]]:
+        assert all(list(map(lambda t: isinstance(t, TParam), self.leaves)))
+        return self.leaves
+        # return {t.name: (t.ptype, t.default) for t in self.leaves}        
+
+
+class TParam(Tree):
+
+    def __init__(self, tok:Tok, leaves:List=None) -> None:
+        super().__init__(tok, leaves)
+    
+    @property
+    def name(self) -> str:
+        return self.get_leftmost()
+
+    @property
+    def ptype(self) -> TokType:
+        return self.leaves[1].tok.t
+    
+    @property
+    def default(self) -> Tok:
+        return self.leaves[2]    
+
+    @property
+    def param(self) -> dict[str, tuple[Tok, Tok]]:
+        return {self.name: (self.ptype, self.default)}
 
 
 class Parser:
@@ -598,10 +662,10 @@ class Parser:
             # Convert everything to a param seq (of params)
             if params.tok.t in [TokType.PARAM, TokType.ID]:
                 if params.tok.t == TokType.ID:
-                    params = Tree(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.line), 
+                    params = TParamSeq(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.col), 
                                   [Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [params, anyType, None])])
                 elif params.tok.t == TokType.PARAM:
-                    params = Tree(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.line), [params])
+                    params = TParamSeq(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.col), [params])
 
             elif params.tok.t == TokType.PARAM_SEQ:
                 newLeaves = []
@@ -619,15 +683,15 @@ class Parser:
             self.s.match('->')
             self.s.skip_space()
             retPos = self.s.pos()
-            retType = Tree(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), self.type_comp(), None])
+            retType = TParam(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), self.type_comp(), None])
         else:
             retPos = self.s.pos()
-            retType = Tree(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), Tree(Tok(TokType.TYPE_NULL, *retPos), []), None])
+            retType = TParam(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), Tree(Tok(TokType.TYPE_NULL, *retPos), []), None])
         
         self.s.skip_space()
         block = self.block()
 
-        return Tree(Tok(TokType.FUNC, *pos), [name, params, pipe, retType, block])
+        return TFunc(Tok(TokType.FUNC, *pos), [name, params, pipe, retType, block])
 
     @_trace
     def struct_def(self):
@@ -1501,7 +1565,7 @@ class Parser:
             return left
         
         params.insert(0, left)
-        return Tree(Tok(TokType.PARAM_SEQ, *pos), params)
+        return TParamSeq(Tok(TokType.PARAM_SEQ, *pos), params)
     
     @_trace
     def param(self, allowDefault:bool=True):
@@ -1528,7 +1592,7 @@ class Parser:
             self.s.skip_space()
             default = self.expr()
         
-        return Tree(Tok(TokType.PARAM, *pos), [left, tComp, default])
+        return TParam(Tok(TokType.PARAM, *pos), [left, tComp, default])
     
     @_trace
     def type_comp(self):
@@ -1737,7 +1801,7 @@ def main():
     
     if len(sys.argv) > 1:
         f = sys.argv[1]
-        p = Parser(f, True)
+        p = Parser(f, False)
         p.tree.printer()
 
 if __name__ == '__main__':

@@ -116,7 +116,7 @@ class Engine:
             case InstType.STORE:
                 target = self.scope.lookup_local(inst.arg)
                 if target is None:
-                    self.scope.runtime_add_data(inst.arg)
+                    self.scope.add_new_local(inst.arg)
                     target = self.scope.lookup_local(inst.arg)
 
                 target._assign(self.data_stack.pop())
@@ -160,7 +160,10 @@ class Engine:
 
 def main():
     fname = sys.argv[1] if len(sys.argv) > 1 else 'test4.pb'
-    e = Engine(Generator(Parser(fname).tree).root)
+    p = Parser(fname)
+    p.tree.printer()
+    g = Generator(p.tree)
+    e = Engine(g.root)
     print('='*80)
     e.run_entrypoint()
     print('='*80)

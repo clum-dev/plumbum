@@ -1,6 +1,5 @@
 from typing import Any, Union, TypeAlias
 from typing_extensions import Self, Type
-from enum import Enum, auto
 from parser import *
 
 ANY_PRIM = Union[int, float, bool, str, None]
@@ -551,16 +550,20 @@ class DScope(Data):
 
         self.value = DNull(None, None, self, name='_ret')    # default returns null
 
+    def __str__(self):
+        out = super().__str__()
+        out += '\n'.join([f'  {k}\t{v.name}' for k,v in self.d_locals.items()])
+        return out
+
     def lookup_local(self, name:str) -> Data|None:
         res = self.d_locals.get(name)
         if res is not None:
             return res
         elif self.parent is not None:
             return self.parent.lookup_local(name)
-        
         return None
     
-    def runtime_add_data(self, name:str):
+    def add_new_local(self, name:str):
         assert name not in self.d_locals.keys()
         self.d_locals[name] = DAny(None, Any, self, name=name)
 
