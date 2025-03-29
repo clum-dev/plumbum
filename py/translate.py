@@ -25,7 +25,37 @@ class Generator:
     def printer(self):
         print(self.__str__())
         print(self.root)
+    
+    def make_var_data(self, var_tree:Tree|TParam):
         
+        # TODO REDO PARAMS WITH DEFAULT -> USE ASSIGNMENT ???
+        raise NotImplementedError('redo param defaults')
+
+        if isinstance(var_tree, TParam):
+            ptype = var_tree.ptype
+            name = var_tree.name
+            default = var_tree.default
+        else:
+            assert var_tree.tok.t == TokType.TYPED_ID
+            ptype = var_tree.leaves[1]
+            name = var_tree.leaves[0]
+            default = None
+        
+        out_type = {
+            TokType.TYPE_INT:       DInt,
+            TokType.TYPE_FLOAT:     DFloat,
+            TokType.TYPE_STRING:    DString,
+            TokType.TYPE_BOOL:      DBool,
+            TokType.TYPE_NULL:      DNull,
+            TokType.TYPE_ANY:       DAny,
+            TokType.TYPE_DEF:       DAny,
+        }[t.ptype]
+
+        return out_type(value=t.default if t.default is not None and t.default.t.has_attr(TokAttr.LITERAL) else None,
+                        dtype=t.ptype,
+                        parent=parent,
+                        name=t.name)
+
     def translate(self, t:TTREE, parent:Data) -> None|Data:
         
         if t is None:
@@ -68,20 +98,7 @@ class Generator:
             case TokType.PARAM:
                 if DEBUG: print('TR param')
                 assert isinstance(t, TParam)
-                out_type = {
-                    TokType.TYPE_INT:       DInt,
-                    TokType.TYPE_FLOAT:     DFloat,
-                    TokType.TYPE_STRING:    DString,
-                    TokType.TYPE_BOOL:      DBool,
-                    TokType.TYPE_NULL:      DNull,
-                    TokType.TYPE_ANY:       DAny,
-                    TokType.TYPE_DEF:       DAny,
-                }[t.ptype]
-
-                return out_type(value=t.default if t.default is not None and t.default.t.has_attr(TokAttr.LITERAL) else None,
-                                dtype=t.ptype,
-                                parent=parent,
-                                name=t.name)
+                return self.make_var_data(t)
             
             case TokType.BLOCK:
                 if DEBUG: print('TR block')
@@ -92,8 +109,14 @@ class Generator:
             case TokType.VAR:
                 if DEBUG: print('TR var')
                 assert isinstance(parent, (DScope))
-                p:TParam = t.leaves[0]
-                parent.d_locals[p.name] = self.translate(p, parent)
+                
+                if t.leaves[0].tok.t == TokType.TYPED_ID:
+                    print('todo var decl')
+
+                elif t.leaves[0].tok.t == TokType.ASSIGN:
+                    self.generate(t.leaves[0], parent)
+                
+                # parent.d_locals[p.name] = self.translate(p, parent)
 
             case _:
                 if DEBUG: print(f'unhandled:\t{t}')
@@ -106,26 +129,41 @@ class Generator:
         
         assert isinstance(parent, DScope)
         
-        print(t.tok.t)
+        # print(t.tok.t)
 
         if t.tok.t == TokType.RETURN:
             for l in t.leaves:
                 self.generate(l, parent)
             parent.insts.append(Inst(InstType.RET))
+
         elif t.tok.t == TokType.CALL:
             parent.insts.append(Inst(InstType.LOADN, t.get_leftmost()))
             for l in t.leaves[1:]:
                 self.generate(l, parent)
             parent.insts.append(Inst(InstType.CALL))
+            
         elif t.tok.t == TokType.ID:
             parent.insts.append(Inst(InstType.LOADN, t.get_leftmost()))
-        elif t.tok.t in TokType.with_attr(TokAttr.LITERAL, value_only=False):
+            
+        elif t.tok.t.has_attr(TokAttr.LITERAL):
             parent.insts.append(Inst(InstType.LOADV, t.get_leftmost()))
 
+        elif t.tok.t.has_attr(TokAttr.ASSIGN):
+            self.generate(t.leaves[1], parent)
+            parent.insts.append(Inst(InstType.STORE, t.leaves[0].get_leftmost()))
+
+        elif t.tok.t.has_attr(TokAttr.BINOP):
+            for l in t.leaves:
+                self.generate(l, parent)
+            parent.insts.append(Inst(InstType.BINOP, t.tok.t))
+
+        else:
+            if DEBUG: print(f'unhandled instr:\t{t}')
+        
 
 def main():
 
-    p = Parser('test4.pb', False)
+    p = Parser('py/test4.pb', False)
     p.tree.printer()
     print('-'*50)
 

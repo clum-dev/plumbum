@@ -1,3 +1,3 @@
-func main {
-    var a:int = b()
+func main a:int=1+2 {
+    
 }

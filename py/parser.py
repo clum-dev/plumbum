@@ -145,7 +145,7 @@ class TextStream:
         global debug
         shift = '  ' * indent
         if debug:
-            print(f'{shift}matched `{repr(self.gotMatch)}` to `{repr(cmatch)}`')
+            print(f'{shift}matched {repr(self.gotMatch)} to {repr(cmatch)}')
         
         for _ in self.gotMatch:
             out = self.consume()
@@ -243,6 +243,7 @@ class TokType(Enum):
     STRUCT =        ['STRUCT',      'struct',   TokAttr.TOP_LEVEL]
     ENUM =          ['ENUM',        'enum',     TokAttr.TOP_LEVEL]
     CONST =         ['CONST',       'const',    TokAttr.TOP_LEVEL]
+    VAR =           ['VAR',         'var',      TokAttr.TOP_LEVEL]
     IMPORT =        ['IMPORT',      'import',   TokAttr.TOP_LEVEL]
 
     BLOCK =         ['BLOCK',       '{']
@@ -250,9 +251,6 @@ class TokType(Enum):
     RETURN =        ['RETURN',      'return'] 
     CONTINUE =      ['CONTINUE',    'continue']
     BREAK =         ['BREAK',       'break']
-
-    # SUBST =         ['SUBST',       '=>']
-    VAR =           ['VAR',         'var',      TokAttr.TOP_LEVEL]
 
     ASSIGN =        ['ASSIGN',      '=',        TokAttr.ASSIGN]
     ASSIGN_ADD =    ['ASSIGN_ADD',  '+=',       TokAttr.ASSIGN]
@@ -341,6 +339,7 @@ class TokType(Enum):
     PARAM_SEQ =     ['PARAM_SEQ',   None]
     PARAM =         ['PARAM',       None]
     ID =            ['ID',          None]
+    TYPED_ID =      ['TYPED_ID',    None]   
 
     TYPE_LIST =     ['TYPE_LIST',   'list',     TokAttr.TYPE]
     TYPE_DICT =     ['TYPE_DICT',   'dict',     TokAttr.TYPE]
@@ -589,7 +588,6 @@ class Parser:
                 self.s.skip_space()
 
             else:
-                # vals.append(self.subst())
                 vals.append(self.stmt())
                 if not self.s.is_match('}'):
                     self.s.match([';', '\n'])
@@ -618,10 +616,8 @@ class Parser:
                 return self.struct_def()
             elif self.s.is_match(TokType.ENUM.lookup()):
                 return self.enum_def()
-            elif self.s.is_match(TokType.CONST.lookup()):
-                return self.const_def()
-            elif self.s.is_match(TokType.VAR.lookup()):
-                return self.var_def()
+            elif self.s.is_match([TokType.CONST.lookup(), TokType.VAR.lookup()]):
+                return self.decl()
             elif self.s.is_match(TokType.IMPORT.lookup()):
                 return self.import_def()
             
@@ -736,35 +732,40 @@ class Parser:
         return Tree(Tok(TokType.ENUM, *pos), [name, *members])
 
     @_trace
-    def const_def(self):
+    def decl(self):
+
         pos = self.s.pos()
-        self.s.match(TokType.CONST.lookup(), True)
+        decl_mode = TokType.VAR
+        
+        if self.s.is_match(TokType.CONST.lookup()):
+            self.s.match(TokType.CONST.lookup(), True)
+            decl_mode = TokType.CONST
+            
+        elif self.s.is_match(TokType.VAR.lookup()):
+            self.s.match(TokType.VAR.lookup(), True)
+
         self.s.skip_space()
         
+        # Block decl
         if self.s.is_match('{'):
             left = []
             self.s.match('{')
             self.s.skip_space(newline=True)
 
             while not self.s.is_match('}'):
-                left.append(self.param_seq())
-                self.s.skip([' ', ';', '\n'])
-
+                left.append(self.assign_stmt(typed_id_lhs=True))
+                if self.s.is_match('}'): break
+                self.s.match([';', '\n'])
+                self.s.skip_space(newline=True)
+                
             self.s.match('}')
-            return Tree(Tok(TokType.CONST, *pos), [*left])
+            return Tree(Tok(decl_mode, *pos), [*left])
 
-        left = self.param_seq()
+        left = self.assign_stmt(typed_id_lhs=True)
         self.s.skip_space()
-
-        # right = None
-        # if self.s.is_match('='):
-        #     self.s.skip_space()
-        #     self.s.match('=')
-        #     self.s.skip_space()
-        #     right = self.pipeline()
         
-        return Tree(Tok(TokType.CONST, *pos), [left])
-        
+        return Tree(Tok(decl_mode, *pos), [left])
+    
     @_trace
     def import_def(self):
         pos = self.s.pos()
@@ -807,22 +808,6 @@ class Parser:
     Statements
     '''
     
-    @_trace
-    def subst(self):
-
-        raise DeprecationWarning('subst')
-
-        # left = self.stmt()
-        # # self.s.skip_space()
-        # if self.s.is_match(TokType.SUBST.lookup()):
-        #     pos = self.s.pos()
-        #     self.s.match(TokType.SUBST.lookup())
-        #     self.s.skip_space()
-        #     right = self.id()
-        #     return Tree(Tok(TokType.SUBST, *pos), [left, right])
-
-        # return left
-
     @_trace
     def stmt(self):    
         if self.s.is_match(TokType.with_attr(TokAttr.TOP_LEVEL)):
@@ -927,7 +912,7 @@ class Parser:
 
             return Tree(Tok(TokType.IF_STMT, *ifPos), [cond, ifBlock, *elseIfs])
             
-        return self.assign()
+        return self.assign_stmt()
     
     @_trace
     def else_if_stmt(self):
@@ -949,50 +934,14 @@ class Parser:
         return Tree(Tok(TokType.ELSE_STMT, *elsePos), [elseBlock])
 
     @_trace
-    def var_def(self):
-        pos = self.s.pos()
-        self.s.match(TokType.VAR.lookup(), True)
+    def assign_stmt(self, typed_id_lhs:bool=False):
+
+        if typed_id_lhs:
+            left = self.typed_id()
+        else:
+            left = self.pipeline()
+
         self.s.skip_space()
-
-        if self.s.is_match('{'):
-            left:list[Tree] = []
-            self.s.match('{')
-            self.s.skip_space(newline=True)
-
-            while not self.s.is_match('}'):
-                left.append(self.param_seq(False))
-                self.s.skip([' ', ';', '\n'])
-                
-            self.s.match('}')
-            return Tree(Tok(TokType.VAR, *pos), [*left])
-
-        left = self.param_seq(False)
-        self.s.skip_space()
-        
-
-        # TODO fix this to use assign parse step
-        raise NotImplementedError('todo use assign')
-
-        right = None
-        if self.s.is_match('='):
-            self.s.skip_space()
-            self.s.match('=')
-            self.s.skip_space()
-            right = self.pipeline()
-        
-        return Tree(Tok(TokType.VAR, *pos), [left, right])
-    
-        # return Tree(Tok(TokType.VAR, *pos), [left])
-
-    @_trace
-    def assign(self):
-
-        left = self.pipeline()
-        self.s.skip_space()
-
-        # # Ignore substitution definitions
-        # if self.s.is_match(TokType.SUBST.lookup()):
-        #     return left
 
         pos = self.s.pos()
         assign = None
@@ -1017,7 +966,7 @@ class Parser:
         else:
             return left
         
-        self.s.skip_space()
+        # self.s.skip_space()
         return Tree(Tok(assign, *pos), [left, self.pipeline()])
     
     '''
@@ -1145,6 +1094,9 @@ class Parser:
             left = self.log_tern()
         self.s.skip_space()
         return left
+
+    '''Logic'''
+    # region
 
     @_trace
     def log_tern(self):
@@ -1328,6 +1280,11 @@ class Parser:
         
         return left
 
+    # endregion
+
+    '''Math'''
+    # region
+
     @_trace
     def data_range(self):
         left = self.sum()
@@ -1444,17 +1401,19 @@ class Parser:
         
         return left
 
+    # endregion
+
     @_trace
     def primary(self):
 
         left = None
-        if self.s.is_match(TokType.SELFMEMBER.lookup()):     # @mem
+        if self.s.is_match(TokType.SELFMEMBER.lookup()):        # @mem
             self.s.match(TokType.SELFMEMBER.lookup())
             left = Tree(Tok(TokType.SELFMEMBER, *self.s.pos()), [self.primary()])
-        elif self.s.is_match(TokType.STRUCTMEMBER.lookup()): # .mem
+        elif self.s.is_match(TokType.STRUCTMEMBER.lookup()):    # .mem
             self.s.match(TokType.STRUCTMEMBER.lookup())
             left = Tree(Tok(TokType.STRUCTMEMBER, *self.s.pos()), [self.id()])
-        elif self.s.is_match(TokType.STREAM.lookup()):       # $$ or $...
+        elif self.s.is_match(TokType.STREAM.lookup()):          # $$ or $...
             sPos = self.s.pos()
             self.s.match(TokType.STREAM.lookup())
             if self.s.is_match(TokType.STREAM.lookup()):
@@ -1462,8 +1421,7 @@ class Parser:
                 left = Tree(Tok(TokType.STREAM, *sPos))
             else:
                 left = Tree(Tok(TokType.STREAMINDEX, *sPos), [self.lit_int()])
-        elif not self.s.is_match(TokType.LAMBDA_EXPR.lookup()) and \
-                self.s.is_match(TokType.DICT_KEY.lookup()):    # :"key"
+        elif self.s.is_match(TokType.DICT_KEY.lookup()):        # ::"key"
             self.s.match(TokType.DICT_KEY.lookup())
             if not self.s.is_match(TokType.DICT_KEY.lookup()):
                 left = Tree(Tok(TokType.DICT_KEY, *self.s.pos()), [self.primary()])
@@ -1603,6 +1561,22 @@ class Parser:
             default = self.expr()
         
         return TParam(Tok(TokType.PARAM, *pos), [left, tComp, default])
+    
+    @_trace
+    def typed_id(self):
+        id = self.id()
+
+        self.s.skip_space()
+        if self.s.is_match(':'):
+            self.s.match(':')
+            self.s.skip_space()
+            id_type = self.type_comp()
+            id.leaves.append(id_type)
+        else:
+            id.leaves.append(TokType.TYPE_ANY)
+
+        id.tok.t = TokType.TYPED_ID
+        return id
     
     @_trace
     def type_comp(self):
@@ -1811,7 +1785,7 @@ def main():
     
     if len(sys.argv) > 1:
         f = sys.argv[1]
-        p = Parser(f, False)
+        p = Parser(f, show_debug=False)
         p.tree.printer()
 
 if __name__ == '__main__':
