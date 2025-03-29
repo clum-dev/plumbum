@@ -36,6 +36,9 @@ class Data:
             self.level = parent.level + 1
 
     def __str__(self) -> str:
+        if isinstance(self.value, Tree):
+            return f'{self.name}: {self.value.get_leftmost()} ({self.dtype})'
+
         return f'{self.name}: {self.value} ({self.dtype})'
 
     def __repr__(self) -> str:
@@ -512,7 +515,7 @@ class Inst:
     name:InstType
     arg:TokType|Data
 
-    def __init__(self, name:InstType, arg:TokType|Data) -> None:
+    def __init__(self, name:InstType, arg:TokType|Data|None=None) -> None:
         assert isinstance(name, InstType)
         self.name = name
         self.arg = arg
@@ -551,8 +554,14 @@ class DScope(Data):
         self.value = DNull(None, None, self, name='_ret')    # default returns null
 
     def __str__(self):
+        indent = '  ' * self.level
+        indent2 = '  ' * (self.level + 1)
+
         out = super().__str__()
-        out += '\n'.join([f'  {k}\t{v.name}' for k,v in self.d_locals.items()])
+        out += f'\n{indent}Locals:\n'
+        if len(self.d_locals.items()) == 0:
+            out += f'{indent2}[Empty]'
+        out += '\n'.join([f'{indent2}[{k}]\t{v}' for k,v in self.d_locals.items()])
         return out
 
     def lookup_local(self, name:str) -> Data|None:
@@ -571,6 +580,13 @@ class DScope(Data):
 class DFunc(DScope):
     def __init__(self, value, dtype, parent, name=None):
         super().__init__(value, dtype, parent, name)
+
+    def __str__(self):
+        out = super().__str__()
+        self.dtype:TParam
+        indent = '  ' * self.level
+        out += f'\n{indent}Ret: {self.dtype.ptype}'
+        return out
 
 
 class DStruct(DScope):

@@ -133,7 +133,7 @@ class TextStream:
             self.gotMatch = None
         return out
     
-    def match(self, cmatch:List[str]|str, trailSpace:bool=False) -> str|None:
+    def match(self, cmatch:List[str]|str, trail_space:bool=False) -> str|None:
 
         if not self.is_match(cmatch):
             self.expected(cmatch)
@@ -150,7 +150,7 @@ class TextStream:
         for _ in self.gotMatch:
             out = self.consume()
 
-        if trailSpace:
+        if trail_space:
             self.match(' ')
         
         return out
@@ -465,18 +465,19 @@ class TFunc(Tree):
         return self.get_leftmost()
     
     @property
-    def params(self) -> dict[str, tuple[Tok, Tok]]:
-        assert isinstance(self.leaves[1], TParamSeq)
-        return self.leaves[1].params
+    def params(self) -> list[Tree]:
+    # def params(self) -> dict[str, tuple[Tok, Tok]]:
+        assert isinstance(self.leaves[1], (TParamSeq, type(None)))
+        return self.leaves[1]
 
     @property
     def pipe_type(self) -> Tok:
         return self.leaves[2]
 
     @property
-    def ret(self) -> dict[str, tuple[Tok, Tok]]:
+    def ret(self) -> Tree:
         assert isinstance(self.leaves[3], TParam)
-        return self.leaves[3].param
+        return self.leaves[3]
 
     @property
     def block(self) -> Tok:
@@ -490,7 +491,8 @@ class TParamSeq(Tree):
         self.leaves:list[TParam]
 
     @property
-    def params(self) -> dict[str, tuple[Tok, Tok]]:
+    def params(self) -> list[Tree]:
+    # def params(self) -> dict[str, tuple[Tok, Tok]]:
         assert all(list(map(lambda t: isinstance(t, TParam), self.leaves)))
         return self.leaves
         # return {t.name: (t.ptype, t.default) for t in self.leaves}        
@@ -511,7 +513,11 @@ class TParam(Tree):
     
     @property
     def default(self) -> Tok:
-        return self.leaves[2]    
+        if not isinstance(self.leaves[2], (Tok, type(None))):
+            print('>>>check')
+            print(self.leaves[2])
+        assert isinstance(self.leaves[2], (Tok, type(None)))
+        return self.leaves[2]
 
     @property
     def param(self) -> dict[str, tuple[Tok, Tok]]:
@@ -536,10 +542,10 @@ class Parser:
             return result
         return wrapper
     
-    def __init__(self, filename, showDebug:bool=False) -> None:
+    def __init__(self, filename, show_debug:bool=False) -> None:
         self.s = TextStream(filename)
         global debug 
-        debug = showDebug
+        debug = show_debug
         self.tree = Tree(Tok(TokType.PROGRAM, 0, 0))
 
         while not self.s.at_end():
@@ -949,30 +955,34 @@ class Parser:
         self.s.skip_space()
 
         if self.s.is_match('{'):
-            left = []
+            left:list[Tree] = []
             self.s.match('{')
             self.s.skip_space(newline=True)
 
             while not self.s.is_match('}'):
-                left.append(self.param_seq())
+                left.append(self.param_seq(False))
                 self.s.skip([' ', ';', '\n'])
                 
             self.s.match('}')
             return Tree(Tok(TokType.VAR, *pos), [*left])
 
-        left = self.param_seq()
+        left = self.param_seq(False)
         self.s.skip_space()
-
-        # right = None
-        # if self.s.is_match('='):
-        #     self.s.skip_space()
-        #     self.s.match('=')
-        #     self.s.skip_space()
-        #     right = self.pipeline()
         
-        # return Tree(Tok(TokType.VAR, *pos), [left, right])
 
-        return Tree(Tok(TokType.VAR, *pos), [left])
+        # TODO fix this to use assign parse step
+        raise NotImplementedError('todo use assign')
+
+        right = None
+        if self.s.is_match('='):
+            self.s.skip_space()
+            self.s.match('=')
+            self.s.skip_space()
+            right = self.pipeline()
+        
+        return Tree(Tok(TokType.VAR, *pos), [left, right])
+    
+        # return Tree(Tok(TokType.VAR, *pos), [left])
 
     @_trace
     def assign(self):
@@ -1069,7 +1079,7 @@ class Parser:
         return left
 
     @_trace
-    def expr_seq(self, allowNewline:bool=False):
+    def expr_seq(self, allow_newline:bool=False):
 
         left = self.expr()
         self.s.skip_space()
@@ -1078,7 +1088,7 @@ class Parser:
 
         while self.s.is_match(','):
             self.s.match(',')
-            self.s.skip_space(allowNewline)
+            self.s.skip_space(allow_newline)
             right.append(self.expr())
         
         if len(right) == 0:
@@ -1550,16 +1560,16 @@ class Parser:
         return Tree(Tok(TokType.LIST_RAW, *pos), [args])
 
     @_trace
-    def param_seq(self, allowDefault:bool=True):
+    def param_seq(self, allow_default:bool=True):
         
         pos = self.s.pos()
-        left = self.param(allowDefault)
+        left = self.param(allow_default)
         params = []
                 
         while self.s.is_match(','):
             self.s.match(',')
             self.s.skip_space(newline=True)
-            params.append(self.param(allowDefault))
+            params.append(self.param(allow_default))
         
         if len(params) == 0:
             return left
@@ -1568,7 +1578,7 @@ class Parser:
         return TParamSeq(Tok(TokType.PARAM_SEQ, *pos), params)
     
     @_trace
-    def param(self, allowDefault:bool=True):
+    def param(self, allow_default:bool=True):
         
         pos = self.s.pos()
         left = self.id()
@@ -1587,7 +1597,7 @@ class Parser:
         if self.s.find('='):
             self.s.skip_space()
 
-        if allowDefault and self.s.is_match('='):
+        if allow_default and self.s.is_match('='):
             self.s.match('=')
             self.s.skip_space()
             default = self.expr()
@@ -1652,7 +1662,7 @@ class Parser:
         
         else:
             return Tree(Tok(TokType.TYPE_DEF, *pos), [name])
-        
+
     @_trace
     def id(self):
         val = ''
@@ -1690,7 +1700,7 @@ class Parser:
 
         elif val in [t.lookup() for t in TokType]:
             raise SyntaxError(f'id: reserved keyword:\t`{val}`')
-
+        
         return Tree(Tok(tokType, line, col), [val])
     
     @_trace

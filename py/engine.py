@@ -163,10 +163,11 @@ def main():
     p = Parser(fname)
     p.tree.printer()
     g = Generator(p.tree)
-    e = Engine(g.root)
-    print('='*80)
-    e.run_entrypoint()
-    print('='*80)
+    print(g)
+    # e = Engine(g.tree)
+    # print('='*80)
+    # e.run_entrypoint()
+    # print('='*80)
 
 if __name__ == '__main__':
     main()
