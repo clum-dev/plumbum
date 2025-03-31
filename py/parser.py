@@ -216,6 +216,7 @@ class TextStream:
 
 class TokAttr(Enum):
     PIPE = auto()
+    PRIMARY = auto()
     STAR = auto()
     TERM = auto()
     ASSIGN = auto()
@@ -248,9 +249,10 @@ class TokType(Enum):
 
     BLOCK =         ['BLOCK',       '{']
 
-    RETURN =        ['RETURN',      'return'] 
-    CONTINUE =      ['CONTINUE',    'continue']
-    BREAK =         ['BREAK',       'break']
+    RETURN =        ['RETURN',          'return']
+    RETURN_STORE =  ['RETURN_STORE',    None]
+    CONTINUE =      ['CONTINUE',        'continue']
+    BREAK =         ['BREAK',           'break']
 
     ASSIGN =        ['ASSIGN',      '=',        TokAttr.ASSIGN]
     ASSIGN_ADD =    ['ASSIGN_ADD',  '+=',       TokAttr.ASSIGN]
@@ -323,15 +325,15 @@ class TokType(Enum):
     INCREMENT =     ['INCREMENT',   '++',       TokAttr.UNOP]
     DECREMENT =     ['DECREMENT',   '--',       TokAttr.UNOP]
 
-    PRIMARY =       ['PRIMARY',         None]
-    STREAM =        ['STREAM',          '$']
-    STREAMINDEX =   ['STREAMINDEX',     None]
-    STRUCTMEMBER =  ['STRUCTMEMBER',    '.']
-    SELFMEMBER =    ['SELFMEMBER',      '@']
-    MEMBER =        ['MEMBER',          '.']
-    INDEX =         ['INDEX',           '[']
-    CALL =          ['CALL',            '(']
-    DICT_KEY =      ['DICT_KEY',        '::']
+    PRIMARY =       ['PRIMARY',         None,   TokAttr.PRIMARY]
+    STREAM =        ['STREAM',          '$',    TokAttr.PRIMARY]
+    STREAMINDEX =   ['STREAMINDEX',     None,   TokAttr.PRIMARY]
+    STRUCTMEMBER =  ['STRUCTMEMBER',    '.',    TokAttr.PRIMARY]
+    SELFMEMBER =    ['SELFMEMBER',      '@',    TokAttr.PRIMARY]
+    MEMBER =        ['MEMBER',          '.',    TokAttr.PRIMARY]
+    INDEX =         ['INDEX',           '[',    TokAttr.PRIMARY]
+    CALL =          ['CALL',            '(',    TokAttr.PRIMARY]
+    DICT_KEY =      ['DICT_KEY',        '::',   TokAttr.PRIMARY ]
 
     ARGS =          ['ARGS',        None]
     ATOM =          ['ATOM',        None]
@@ -475,11 +477,10 @@ class TFunc(Tree):
 
     @property
     def ret(self) -> Tree:
-        assert isinstance(self.leaves[3], TParam)
         return self.leaves[3]
 
     @property
-    def block(self) -> Tok:
+    def block(self) -> Tree:
         return self.leaves[4]
 
 
@@ -494,7 +495,7 @@ class TParamSeq(Tree):
     # def params(self) -> dict[str, tuple[Tok, Tok]]:
         assert all(list(map(lambda t: isinstance(t, TParam), self.leaves)))
         return self.leaves
-        # return {t.name: (t.ptype, t.default) for t in self.leaves}        
+        # return {t.name: (t.ptype, t.default) for t in self.leaves}  
 
 
 class TParam(Tree):
@@ -508,19 +509,13 @@ class TParam(Tree):
 
     @property
     def ptype(self) -> TokType:
-        return self.leaves[1].tok.t
+        if self.has_default:
+            return self.leaves[0].leaves[0].leaves[1].tok.t
+        return self.leaves[0].leaves[1].tok.t
     
     @property
-    def default(self) -> Tok:
-        if not isinstance(self.leaves[2], (Tok, type(None))):
-            print('>>>check')
-            print(self.leaves[2])
-        assert isinstance(self.leaves[2], (Tok, type(None)))
-        return self.leaves[2]
-
-    @property
-    def param(self) -> dict[str, tuple[Tok, Tok]]:
-        return {self.name: (self.ptype, self.default)}
+    def has_default(self) -> bool:
+        return self.leaves[0].tok.t == TokType.ASSIGN
 
 
 class Parser:
@@ -659,13 +654,13 @@ class Parser:
             
             self.s.skip_space()
             params = self.param_seq()
-            anyType = Tree(Tok(TokType.TYPE_ANY, params.tok.line, params.tok.col), [])
 
             # Convert everything to a param seq (of params)
             if params.tok.t in [TokType.PARAM, TokType.ID]:
                 if params.tok.t == TokType.ID:
-                    params = TParamSeq(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.col), 
-                                  [Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [params, anyType, None])])
+                    raise DeprecationWarning('TODO FIX: should just be param')
+                #     params = TParamSeq(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.col), 
+                #                   [Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [params, anyType, None])])
                 elif params.tok.t == TokType.PARAM:
                     params = TParamSeq(Tok(TokType.PARAM_SEQ, params.tok.line, params.tok.col), [params])
 
@@ -673,7 +668,8 @@ class Parser:
                 newLeaves = []
                 for p in params.leaves:
                     if p.tok.t == TokType.ID:
-                        newLeaves.append(Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [p, anyType, None]))
+                        raise DeprecationWarning('TODO FIX: should just be param')
+                        # newLeaves.append(Tree(Tok(TokType.PARAM, params.tok.line, params.tok.col), [p, anyType, None]))
                     else:
                         newLeaves.append(p)
 
@@ -685,10 +681,10 @@ class Parser:
             self.s.match('->')
             self.s.skip_space()
             retPos = self.s.pos()
-            retType = TParam(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), self.type_comp(), None])
+            retType = Tree(Tok(TokType.TYPED_ID, *retPos), ['_ret', self.type_comp()])
         else:
             retPos = self.s.pos()
-            retType = TParam(Tok(TokType.PARAM, *retPos), [Tree(Tok(TokType.ID, *retPos), ['_ret']), Tree(Tok(TokType.TYPE_NULL, *retPos), []), None])
+            retType = Tree(Tok(TokType.TYPED_ID, *retPos), ['_ret', Tree(Tok(TokType.TYPE_NULL, *retPos))])
         
         self.s.skip_space()
         block = self.block()
@@ -809,7 +805,7 @@ class Parser:
     '''
     
     @_trace
-    def stmt(self):    
+    def stmt(self):
         if self.s.is_match(TokType.with_attr(TokAttr.TOP_LEVEL)):
             return self.top_level()
         
@@ -966,8 +962,13 @@ class Parser:
         else:
             return left
         
-        # self.s.skip_space()
-        return Tree(Tok(assign, *pos), [left, self.pipeline()])
+        self.s.skip_space()
+        if self.s.is_match(TokType.BLOCK.lookup()):
+            right = self.block()
+        else:
+            right = self.pipeline()
+
+        return Tree(Tok(assign, *pos), [left, right])
     
     '''
     Expressions
@@ -1096,7 +1097,6 @@ class Parser:
         return left
 
     '''Logic'''
-    # region
 
     @_trace
     def log_tern(self):
@@ -1280,10 +1280,7 @@ class Parser:
         
         return left
 
-    # endregion
-
     '''Math'''
-    # region
 
     @_trace
     def data_range(self):
@@ -1400,8 +1397,6 @@ class Parser:
             left = Tree(Tok(TokType.DECREMENT, *self.s.pos()), [left])
         
         return left
-
-    # endregion
 
     @_trace
     def primary(self):
@@ -1539,28 +1534,17 @@ class Parser:
     def param(self, allow_default:bool=True):
         
         pos = self.s.pos()
-        left = self.id()
-        tComp = Tree(Tok(TokType.TYPE_ANY, *pos), [])
-        default = None
-
-        if self.s.find(':'):
-            self.s.skip_space()
-        
-        if self.s.is_match(':'):
-            self.s.match(':')
-            self.s.skip_space()
-            tComp = self.type_comp()
-            self.s.skip_space()
-        
-        if self.s.find('='):
-            self.s.skip_space()
+        left = self.typed_id()
+        self.s.skip_space()
 
         if allow_default and self.s.is_match('='):
+            pos = self.s.pos()
             self.s.match('=')
             self.s.skip_space()
             default = self.expr()
+            left = Tree(Tok(TokType.ASSIGN, *pos), [left, default])
         
-        return TParam(Tok(TokType.PARAM, *pos), [left, tComp, default])
+        return TParam(Tok(TokType.PARAM, *pos), [left])
     
     @_trace
     def typed_id(self):
@@ -1573,7 +1557,7 @@ class Parser:
             id_type = self.type_comp()
             id.leaves.append(id_type)
         else:
-            id.leaves.append(TokType.TYPE_ANY)
+            id.leaves.append(Tree(Tok(TokType.TYPE_ANY, *self.s.pos())))
 
         id.tok.t = TokType.TYPED_ID
         return id
@@ -1640,7 +1624,7 @@ class Parser:
     @_trace
     def id(self):
         val = ''
-        line, col = self.s.pos()
+        pos = self.s.pos()
 
         val += self.s.match(ALPHAS + ['_'])
         while self.s.is_match(ALPHAS + DIGITS + ['_']):
@@ -1672,10 +1656,13 @@ class Parser:
         elif val == TokType.TYPE_ANY.lookup():
             tokType = TokType.TYPE_ANY
 
+        elif val == TokType.RETURN.lookup():
+            return Tree(Tok(TokType.RETURN_STORE, *pos), None)
+
         elif val in [t.lookup() for t in TokType]:
             raise SyntaxError(f'id: reserved keyword:\t`{val}`')
         
-        return Tree(Tok(tokType, line, col), [val])
+        return Tree(Tok(tokType, *pos), [val])
     
     @_trace
     def literal(self):
@@ -1771,7 +1758,7 @@ class Parser:
         if self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
         else:
-            raise SyntaxError(f'Unexpected token: `{self.s.curr()}` \tat line {self.s.line}, col {self.s.col}')
+            raise SyntaxError(f'Unexpected token: {repr(self.s.curr())} \tat line {self.s.line}, col {self.s.col}')
 
         while self.s.is_match(DIGITS):
             val += self.s.match(DIGITS)
@@ -1785,8 +1772,11 @@ def main():
     
     if len(sys.argv) > 1:
         f = sys.argv[1]
-        p = Parser(f, show_debug=False)
-        p.tree.printer()
+    else:
+        f = 'test4.pb'
+    
+    p = Parser(f, show_debug=False)
+    p.tree.printer()
 
 if __name__ == '__main__':
     main()

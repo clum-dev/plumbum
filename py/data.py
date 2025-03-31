@@ -37,9 +37,9 @@ class Data:
 
     def __str__(self) -> str:
         if isinstance(self.value, Tree):
-            return f'{self.name}: {self.value.get_leftmost()} ({self.dtype})'
+            return f'{self.name}: {repr(self.value.get_leftmost())} ({self.dtype})'
 
-        return f'{self.name}: {self.value} ({self.dtype})'
+        return f'{self.name}: {repr(self.value)} ({self.dtype})'
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -501,7 +501,12 @@ class InstType(Enum):
     BINOP = auto()
     UNOP  = auto()
 
+    PIPE  = auto()
+
     BUILD_STR = auto()
+    BUILD_RANGE = auto()
+    BUILD_SEQ = auto()
+    BUILD_DEFAULTS = auto()
 
     def __str__(self) -> str:
         return self.name
@@ -562,6 +567,12 @@ class DScope(Data):
         if len(self.d_locals.items()) == 0:
             out += f'{indent2}[Empty]'
         out += '\n'.join([f'{indent2}[{k}]\t{v}' for k,v in self.d_locals.items()])
+        
+        out += f'\n{indent}Insts:\n'
+        if len(self.insts) == 0:
+            out += f'{indent2}[Empty]'
+        out += '\n'.join([f'{indent2}{i}' for i in self.insts])
+
         return out
 
     def lookup_local(self, name:str) -> Data|None:
@@ -585,7 +596,7 @@ class DFunc(DScope):
         out = super().__str__()
         self.dtype:TParam
         indent = '  ' * self.level
-        out += f'\n{indent}Ret: {self.dtype.ptype}'
+        out += f'\n{indent}Ret: {self.dtype}'
         return out
 
 
